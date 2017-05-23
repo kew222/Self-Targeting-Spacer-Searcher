@@ -1,0 +1,2007 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+#STSS (Self-Targeting Spacer Search). This code takes a archaeal/bacterial strain and searches for incorporated phage islands and checks for a working
+#CRISPR system to identify self-targeting spacers
+#Returns a list of potential hits
+
+#This script was written in 2016-2017 by Kyle Watters
+#Copyright (c) 2016 Kyle Watters. All rights reserved.
+
+#Dependencies include:  BLAST (local), biopython, CRT CRISPR finder tool, Clustal Omega (and thus argtable2)
+
+from __future__ import division
+import sys, os
+import subprocess, threading
+import getopt
+import glob
+import requests
+import time
+import httplib
+from collections import Counter
+from CRISPR_definitions import Cas_proteins,CRISPR_types
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio import Entrez
+from Bio.Blast import NCBIWWW
+from urllib2 import HTTPError  # for Python 2
+Entrez.email = "watters@berkeley.edu"
+
+crt_path = "/Users/kylewatters/precompiled_binaries"
+#crt_path = "/Users/watters/precompiled_binaries"
+
+help_message = '''
+anti_CRISPR_miner.py searches for potential anti-CRISPR proteins from a supplied bacterial strain
+*Make sure to quote multiword terms*
+-Note that currently, can only analyze genomes from NCBI due to current limitations in PHASTER code
+
+Usage:
+   anti_CRISPR_miner.py [options] [--dir <directory> | --search <"NCBI search term"> ]
+
+Options
+-h, --help                      Opens help message
+-v, --version                   Displays version number
+--dir <directory>               Use directory of genomes (fasta-formatted) instead of searching NCBI
+--search <"NCBI search term">   Use NCBI nucleotide database to find genomes
+--Accs <Assembly_list_file>     Search genomes based on a given list of assemblies (incompatible with search)
+-f, --force-redownload          Forces redownloading of genomes that were already downloaded
+-n, --no-ask                    Force downloading of genomes regardless of number found (default: ask)
+-l, --limit <N>                 Limit Entrez search to the first N results found (default: 1000)
+--complete-only                 Only return complete genomes from NCBI
+--rerun-loci <filename>         Rerun the locus annotater to recheck the nearby locus for Type and completeness from provided sapcer search results file                   
+-E, --E-value  <N>              Upper limit of E-value to accept BLAST results as protein family (default: 1e-3)
+--percent-reject <N>            Percentage (of 100%) to use a cutoff from the average spacer length to reject validity of a proposed locus (default 25%)
+                                Lower values are more stringent
+--all-islands                   Include all unknown proteins found within a predicted MGE
+--outside-islands               Include proteins from predicted MGEs when the spacer is outside a predicted MGE island
+                                (automatically includes --all-islands option)
+-s, --spacers <N>               Number of spacers needed to declare a CRISPR locus (default: 3)
+--pad-locus <N>                 Include a buffer around a potential locus to prevent missed repeats from
+                                appearing as hits (default: 100)
+--skip-PHASTER                  Skip PHASTER analysis (currently can't upload search files)                                
+-p, --rerun-PHASTER <filename>  Rerun PHASTER to recheck islands from provided Spacer search results file
+
+-c, --cluster-search            Cluster proteins that are provided to look for anti-CRISPRs (default: No)
+--skip-family-search            Skips querying each family against the NCBI database
+--families-limit <N>            Limit results of families found to N (default: 300)
+--align-families                Perform a multiple sequence alignment on the families found (default: No)
+'''
+
+
+def get_version():
+    return "0.0.2"
+
+class Usage(Exception):
+    def __init__(self,msg):
+        self.msg = msg
+
+class Params:
+    
+    def __init__(self):
+        pass
+    
+    def parse_options(self, argv):
+        try:
+            opts, args = getopt.getopt(argv[1:], "hvE:l:s:fp:c",
+                                       ["limit=",
+                                       "dir=",
+                                       "search=",
+                                       "Accs=",
+                                       "help",
+                                       "all-islands",
+                                       "outside-islands",
+                                       "rerun-loci=",
+                                       "E-value=",
+                                       "spacers=",
+                                       "NCBI",
+                                       "skip-family-search",
+                                       "families-limit=",
+                                       "cluster-search",
+                                       "pad-locus=",
+                                       "force-redownload",
+                                       "percent-reject=",
+                                       "complete-only",
+                                       "skip-PHASTER",
+                                       "rerun-PHASTER=",
+                                       "align-families",
+                                       "version"])
+        
+        except getopt.error, msg:
+            raise Usage(msg)
+        default_limit = 100000
+        num_limit = 0
+        E_value_limit = 1e-3
+        provided_dir = ''
+        search = ''
+        Accs_input = ''
+        rerun_loci = False
+        all_islands = False
+        in_islands_only = True
+        repeats = 4
+        skip_family_search = False
+        families_limit = 300
+        pad_locus = 40
+        skip_family_create = True
+        complete_only = False
+        skip_PHASTER = False
+        rerun_PHASTER = False
+        skip_alignment = True
+        spacer_rerun_file = ''
+        percent_reject = 25
+        redownload = False
+        ask = True
+        
+        for option, value in opts:
+            if option in ("-v", "--version"):
+                print "anti_CRISPR_miner.py v%s" % (get_version())
+                exit(0)
+            if option in ("-h", "--help"):
+                raise Usage(help_message)  
+            if option in ("-l","--limit"):
+                num_limit = int(value)   
+            if option in ("-E", "--E-value"):
+                E_value_limit = float(value)      
+            if option == "--dir":
+                provided_dir = str(value) + "/"      
+            if option == "--search":
+                search = value  
+            if option == "--all-islands":
+                all_islands = True
+            if option == "--Accs":
+                Accs_input = value
+            if option == "--rerun-loci":
+                rerun_loci = True
+                spacer_rerun_file = value
+            if option == "--outside-islands":
+                in_islands_only = False  
+                all_islands = True
+            if option in ("-s","--spacers"):
+                repeats = int(value) + 1
+            if option == "--skip-family-search":
+                skip_family_search = True
+            if option == "--families-limit":
+                families_limit = int(value)   
+            if option == "--pad-locus":
+                pad_locus = int(value) 
+            if option in ('c',"--cluster-search"):
+                skip_family_create = False 
+            if option == "--complete-only":
+                complete_only = True   
+            if option == "--skip-PHASTER":
+                skip_PHASTER = True
+            if option in ('-p','--rerun-PHASTER'):
+                spacer_rerun_file = value
+                rerun_PHASTER = True
+                skip_PHASTER = False
+                skip_family_create = True
+            if option == '--align_families':
+                skip_alignment = False
+            if option == "--percent-reject":
+                percent_reject = int(value)    
+            if option in ("-f","--force-redownload"):
+                redownload = True   
+            if option in ("-n","--no-ask"):
+                ask = False  
+                                                                           
+        if len(args) != 0:
+            raise Usage(help_message)    
+                
+        if search == '' and provided_dir == '' and Accs_input == '' and not rerun_PHASTER and not rerun_loci:
+            print("You must provide an operation to perform.\n") 
+            raise Usage(help_message)       
+        elif search != '' and Accs_input != '':
+            print("Search and Accession# input are not compatible, please select one.\n") 
+            raise Usage(help_message)    
+                            
+        return args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci
+    
+    def check(self):
+        pass
+
+def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
+    
+    for sequence in sequences:  #First check that all only the correct characters are used
+        for base in sequence: 
+            if base not in code:   
+                return False 
+    
+    #Then check that the locus is probably real by checking if all the spacer lengths fall with a rejection percentage
+    spacer_lengths = [len(spacer) for spacer in sequences]
+    average_spacer_length = int(sum(spacer_lengths) / len(spacer_lengths))
+    lower_limit = int(average_spacer_length * (1 - percent_reject / 100))
+    upper_limit = int(average_spacer_length * (1 + percent_reject / 100))
+    for spacer_length in spacer_lengths:
+        if spacer_length < lower_limit or spacer_length > upper_limit:
+            return False         
+    return True
+
+def print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,repeats,percent_reject,skip_PHASTER,all_islands,in_islands_only,skip_family_create,skip_family_search,families_limit):
+
+    #Output the search parameters
+    with open("Search_parameters.txt","w") as search_params:
+        if search != '':
+            search_params.write("Search parameter:\t'{0}' (excluding phages and plasmids)\n".format(search))
+            if num_limit != default_limit:
+                search_params.write("Search limited to:\t{0} genomes\n".format(num_limit))
+        if provided_dir != '':
+            search_params.write("Genomes provided from:\t{0}\n".format(provided_dir))
+            if num_limit != default_limit:
+                search_params.write("Number of genomes provided limited to:\t{0} genomes\n".format(num_limit))
+        search_params.write("E-value limit:\t{:.1e}\n\n".format(E_value_limit))
+        if pad_locus > 0:
+            search_params.write("Searching at least {0} nts away from ends of CRISPR loci.\n".format(pad_locus))
+        search_params.write("Minimum spacers to declare locus:\t{0}\n\n".format(repeats-1))
+        search_params.write("Minimum adherence to average spacer length:\t{0}\n".format(str(100-percent_reject)+"%"))
+        if skip_PHASTER:
+            search_params.write("PHASTER analysis skipped.\n")
+        if all_islands and not skip_PHASTER:
+            search_params.write("All proteins from MGEs included.\n")    
+        if in_islands_only and not skip_PHASTER:
+            search_params.write("Only mining proteins when spacers are within MGEs.\n")
+        elif skip_family_create and not skip_PHASTER:
+            search_params.write("No families created from list of potential proteins.\n")
+        elif skip_family_search and not skip_PHASTER:
+            search_params.write("No family BLAST against NCBI database performed.\n")
+        else:
+            search_params.write("Number of families limited to:\t{0}\n".format(families_limit))
+
+def load_provided(provided_dir,num_limit,complete_only):
+
+    provided_WGS_counter = 0 
+    provided_complete_counter = 0
+    fastanames = {}   
+    #If genomes were provided, load into fastanames
+    files = glob.glob(provided_dir + "*.*")   #gets all files in the genome directory 
+    for it in files:
+        if provided_complete_counter + provided_WGS_counter == num_limit:
+            break
+        #See if one or a set of contigs
+        try:
+            record = SeqIO.read(it,"fasta")  #will fail if WGS
+            try:
+                name = record.id.split(" ")[0]   #try to get NCBI formatted Accession # out of header
+            except:
+                name = record.id
+            fastanames[name] = [it, "provided","complete"]    
+            provided_complete_counter += 1
+        except ValueError:
+            if not complete_only:
+                try:
+                    for record in SeqIO.parse(it, "fasta"):
+                        try:
+                            name = record.id.split("|")[0]   #try to get NCBI formatted Accession # out of header
+                        except:
+                            name = record.id
+                        break
+                    fastanames[name] = [it, "provided", "WGS"]
+                    provided_WGS_counter += 1
+                except:                   
+                    print("File {0} is doesn't seem to be formatted properly. Skipping.".format(it))
+        except:
+            raise
+    text2 =  " to analyze for anti-CRISPR sequences."
+    text1 = "Counted {0} complete sequences".format(provided_complete_counter)
+    if not complete_only:
+        text1 = text1 + " and {0} WGS contig sets provided".format(provided_WGS_counter)
+    print(text1 + text2) 
+
+    return fastanames,provided_complete_counter,provided_WGS_counter
+
+def NCBI_search(search,database,num_limit=100000,tag="[organism]",exclude_term=" NOT phage NOT virus"):
+    attempt_num = 1
+    while True:
+        try:
+            search_term = search + tag + exclude_term   #otherwise, you get isolated viruses
+            handle = Entrez.esearch(db=database,term=search_term, retmax=num_limit)
+            record = Entrez.read(handle)
+            handle.close()
+            break
+        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+            if attempt_num == 3:
+                print("httplib.IncompleteRead error at Entrez genome search step. Reached limit of {0} failed attempts.".format(attempt_num))
+                return
+            else:
+                print("httplib.IncompleteRead error at Entrez genome search step. #{0}. Retrying...".format(attempt_num))
+            attempt_num += 1
+    genomes = record["IdList"]
+    return genomes
+
+def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
+    attempt_num = 1
+    while True:
+        try:
+            handle2 = Entrez.elink(dbfrom='genome', db='assembly', id=genomes, retmax=num_limit)
+            record2 = Entrez.read(handle2)
+            handle2.close()
+            break
+        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+            if attempt_num == 3:
+                print("httplib.IncompleteRead error at Entrez step linking genomes to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
+                return
+            else:
+                print("httplib.IncompleteRead error at Entrez step linking genomes to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
+            attempt_num += 1
+        except IndexError as e: 
+            print("IndexError: ", e)
+            if attempt_num == 3:
+                print("Encountered problems linking genomes to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
+                return         
+        except RuntimeError:
+                #NCBI probably closed the connection early, happens with poor internet connections
+                if attempt_num == 3:
+                    print("Runtime error at Entrez step linking genomes to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    return
+                else:
+                    print("Runtime error at Entrez step linking genomes to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
+                attempt_num += 1
+    genome_num = 0
+    for linked in record2:
+        try:
+            for link in linked["LinkSetDb"][0]["Link"]:
+                assemblies.append(link['Id'])   
+        except IndexError:
+            print("No assembly links from genome ID {0}. Skipping...".format(genomes[genome_num]))
+        genome_num += 1 
+    
+    return assemblies          
+
+def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[]):
+    
+    #Because the number of links can exponentially grow from the genome links, split off and do in chunks
+    assembly_chunk_size = 5
+    for chunk in range(0,len(assemblies),assembly_chunk_size):
+        assemblies_chunk = assemblies[chunk:chunk+assembly_chunk_size]  
+        
+        attempt_num = 1
+        while True:
+            try:
+                handle3 = Entrez.elink(dbfrom='assembly', db='nuccore', id=assemblies_chunk, retmax=100000)
+                record3 = Entrez.read(handle3)
+                handle3.close()
+                time.sleep(0.35)  #Delay to prevent server abuse
+                break
+            except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+                if attempt_num == 3:
+                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    return
+                else:
+                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
+                attempt_num += 1  
+            except HTTPError as err:
+                if 500 <= err.code <= 599:
+                    print("Received error from server %s" % err)
+                    print("Attempt %i of 3" % attempt_num)
+                    attempt_num += 1
+                    time.sleep(15)
+                else:
+                    raise 
+            except RuntimeError:
+                #NCBI probably closed the connection early, happens with poor internet connections
+                if attempt_num == 3:
+                    print("Runtime error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    return
+                else:
+                    print("Runtime error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
+                attempt_num += 1
+        for assembly in record3:
+            num_genomes += 1
+            is_WGS = False
+            ref_seq = False
+            genbank_IDs = []
+            refseq_IDs = []
+            wgs_master = ''
+            for link in assembly["LinkSetDb"]:
+                if link['LinkName'] == 'assembly_nuccore_refseq':
+                    ref_seq = True    #gives preference to refseq data being downloaded
+                    refseq_IDs = [name['Id'] for name in link['Link'] ]   
+                elif link['LinkName'] == 'assembly_nuccore_insdc':
+                    genbank_IDs = [name['Id'] for name in link['Link'] ]
+                elif link['LinkName'] =='assembly_nuccore' and genbank_IDs == []:  #if the insdc key was already found, skip over
+                    genbank_IDs = [name['Id'] for name in link['Link'] ]
+                elif link['LinkName'] =='assembly_nuccore_representatives' and genbank_IDs == []:  #if the insdc key was already found, skip over
+                    genbank_IDs = [name['Id'] for name in link['Link'] ]
+                elif link['LinkName'] == 'assembly_nuccore_wgsmaster':
+                    is_WGS = True
+                    wgs_master = link['Link'][0]['Id']
+            if len(complete_IDs) + len(wgs_master_GIs) < num_limit:    
+                if len(refseq_IDs) == 0 and len(genbank_IDs) == 0:
+                    break
+                if not is_WGS and ref_seq:
+                    if len(refseq_IDs) == 1:
+                        complete_IDs += refseq_IDs   #Note that in the accession numbers list, each position represents a genome
+                    else:
+                        is_WGS = True                #If there are multiple parts associated with an assembly assume its WGS even if no master is given
+                        wgs_master = str(min(int(s) for s in refseq_IDs))  #If a WGS master isn't chosen, take the lowest GI number as a master for naming purposes (to prevent renaming upon re-searching since order is not preserved by NCBI)
+                elif not is_WGS and not ref_seq:
+                    if len(genbank_IDs) == 1:
+                        complete_IDs += genbank_IDs  
+                    else:
+                        is_WGS = True                  #If there are multiple parts associated with an assembly assume its WGS even if no master is given
+                        wgs_master = str(min(int(s) for s in genbank_IDs))
+                if is_WGS and not complete_only:   #Exclude WGS data if complete-only selected
+                    if len(refseq_IDs) == 1:
+                        complete_IDs += refseq_IDs   ##Treat single-piece entries as complete
+                    elif len(genbank_IDs) == 1:
+                        complete_IDs += genbank_IDs      
+                    elif ref_seq:
+                        WGS_IDs.append(refseq_IDs)   #see above for brackets.
+                        wgs_master_GIs.append(wgs_master) 
+                    else:
+                        WGS_IDs.append(genbank_IDs)
+                        wgs_master_GIs.append(wgs_master) 
+        
+    genbank_IDs = [];  refseq_IDs = []   #Clear some memory space
+                                                                                                                                                                        
+    found_complete = len(complete_IDs)
+    found_WGS =  len(WGS_IDs) 
+    total = found_complete + found_WGS                    
+
+    return found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes
+
+def link_nucleotide_to_bioproject(nucleotide_list,bioprojects=[],num_limit=100000):
+    attempt_num = 1
+    while True:
+        try:
+            handle4 = Entrez.elink(dbfrom='nucleotide', db='bioproject', id=nucleotide_list, retmax=num_limit)
+            record4 = Entrez.read(handle4)
+            handle4.close()
+            break
+        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+            if attempt_num == 3:
+                print("httplib.IncompleteRead error at Entrez step linking nucleotides to bioproject database. Reached limit of {0} failed attempts.".format(attempt_num))
+                return
+            else:
+                print("httplib.IncompleteRead error at Entrez step linking nucleotides to bioproject database. Attempt #{0}. Retrying...".format(attempt_num))
+            attempt_num += 1
+        except IndexError as e: 
+            print("IndexError: ", e)
+            if attempt_num == 3:
+                print("Encountered problems linking nucleotides to bioproject database. Reached limit of {0} failed attempts.".format(attempt_num))
+                return         
+        except RuntimeError:
+                #NCBI probably closed the connection early, happens with poor internet connections
+                if attempt_num == 3:
+                    print("Runtime error at Entrez step linking nucleotides to bioproject database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    return
+                else:
+                    print("Runtime error at Entrez step linking nucleotides to bioproject database. Attempt #{0}. Retrying...".format(attempt_num))
+                attempt_num += 1
+    
+    nucleotide_num = 0
+    for linked in record4:
+        try:
+            for link in linked["LinkSetDb"][0]["Link"]:
+                bioprojects.append(link['Id'])   
+        except IndexError:
+            print("No bioproject links from nucleotide ID {0}. Skipping...".format(nucleotide_list[nucleotide_num]))
+        nucleotide_num += 1 
+    
+    return bioprojects   
+    
+def link_nucleotide_to_assembly(nucleotide_list,assemblies=[],num_limit=100000):
+    attempt_num = 1
+    while True:
+        try:
+            handle4 = Entrez.elink(dbfrom='nucleotide', db='assembly', id=nucleotide_list, retmax=num_limit)
+            record4 = Entrez.read(handle4)
+            handle4.close()
+            break
+        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+            if attempt_num == 3:
+                print("httplib.IncompleteRead error at Entrez step linking nucleotides to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
+                return
+            else:
+                print("httplib.IncompleteRead error at Entrez step linking nucleotides to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
+            attempt_num += 1
+        except IndexError as e: 
+            print("IndexError: ", e)
+            if attempt_num == 3:
+                print("Encountered problems linking nucleotides to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
+                return         
+        except RuntimeError:
+                #NCBI probably closed the connection early, happens with poor internet connections
+                if attempt_num == 3:
+                    print("Runtime error at Entrez step linking nucleotides to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    return
+                else:
+                    print("Runtime error at Entrez step linking nucleotides to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
+                attempt_num += 1
+    
+    nucleotide_num = 0
+    for linked in record4:
+        try:
+            for link in linked["LinkSetDb"][0]["Link"]:
+                assemblies.append(link['Id'])   
+        except IndexError:
+            print("No assembly links from nucleotide ID {0}. Skipping...".format(nucleotide_list[nucleotide_num]))
+        nucleotide_num += 1 
+    
+    return assemblies   
+    
+def search_NCBI_genomes(search,num_limit,complete_only):
+
+    #Retrieve list of complete genome IDs from the search term
+    database = "genome"
+    genomes = NCBI_search(search,database,num_limit)
+    
+    #Link genomes found to assemblies 
+    assemblies = link_genome_to_assembly(genomes,num_limit,[])
+    #Link assemblies found to nucleotide records  
+    found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[])
+
+    return found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes
+
+def gather_assemblies_from_bioproject_IDs(bioprojectIDs,IDs=True,num_limit=100000,complete_only=False):
+
+    if IDs:
+        #Convert BioProject IDs to assembly numbers
+        try:
+            fetch_handle = Entrez.elink(dbfrom='bioproject',id=bioprojectIDs,db="assembly",retmax=num_limit)
+            reader = Entrez.read(fetch_handle)
+            fetch_handle.close()
+        except:  #If there's an error, print the subset to find the problem entry
+            print(bioprojectIDs)
+            sys.exit()
+        assemblies = []; ID_num = 0
+        for linked in reader:
+            try:
+                for link in linked["LinkSetDb"][0]["Link"]:
+                    assemblies.append(link['Id'])   
+            except IndexError:
+                print("No assembly links from nucleotide ID {0}. Skipping...".format(bioprojectIDs[ID_num]))
+            ID_num += 1 
+    else:
+        pass ##CURRENTLY UNABLE TO LINK ASSEMBLY ACCESSION #s DIRECTLY TO NUCCORE
+    
+    return assemblies    
+
+def get_Accs(IDs):
+    
+    handle = Entrez.efetch(db='nuccore', rettype="acc", id=IDs)   #Get Acc#s of those found from search
+    Accs = [Id.strip() for Id in handle]            
+    handle.close()
+
+    return Accs
+         
+def download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],fastanames={},ask=False):
+
+    if total > num_limit:
+        extra_text = " Preparing to download only {0}.".format(num_limit)
+    else:
+        extra_text = ''
+    
+    if total < num_limit:
+        if search != '':
+            print("Found {0} genome(s) searching for '{1}'.".format(num_genomes,search))
+        else:
+            print("Found {0} genome(s).".format(num_genomes,search))
+    else:
+        extra_text = " Preparing to download only the first {0}.".format(num_limit)
+        print("Found {0} genome(s) searching for '{1}'.".format(num_genomes,search) + extra_text)
+    
+    if not os.path.exists("downloaded_genomes"):
+            os.mkdir("downloaded_genomes")
+    num_downloaded = 0
+    
+    #Filter out genomes that have already been downloaded, unless forced re-download
+    if not redownload:
+        files = glob.glob(current_dir+"downloaded_genomes/*.*")   #gets all files in the genome directory
+        if provided_dir != '':
+            files += glob.glob(provided_dir + "/*.*")   #gets all files in the provided directory to prevent doubles
+        files_in_dir = {}
+        for filename in files:
+            #Check if the file provided is a WGS or complete genome
+            frag_num = 0
+            genome_type = "complete"
+            with open(filename, 'rU') as openfile:
+                for line in openfile:
+                    if line[0] == ">":
+                        frag_num += 1
+                        Acc_num = line.split(">")[1].split()[0].strip()
+                        if frag_num > 1:
+                            genome_type = "WGS"   #NOTE will assume that a file with 1 contig is a complete genome (for the purposes of the code, they run the same however)
+                            Acc_num = Acc_num.split("|")[0]   #This will generate a master record number, or what it was labeled as
+                            break
+            files_in_dir[Acc_num] = [filename, "provided", genome_type]
+
+        #Convert all of the searched GI numbers to Accession via a dictionary
+        batch_size = 5 ; Accs = []
+        all_IDs = complete_IDs+wgs_master_GIs
+        for start in range(0, len(all_IDs), batch_size):
+            end = min(len(all_IDs), start+batch_size)
+            IDs = all_IDs[start:end]
+            Accs += get_Accs(IDs)
+        Acc_convert_to_GI = dict(zip(Accs,complete_IDs+wgs_master_GIs))
+            
+        unaccounted_files = {}
+        for Acc, data in files_in_dir.iteritems():
+            try:
+                GI = Acc_convert_to_GI[Acc]
+                if GI in complete_IDs or GI in wgs_master_GIs:
+                    fastanames[Acc] = files_in_dir[Acc]
+            except KeyError:
+                #If the Accession number isn't in the conversion list, there is a likely a missing WGS master record (or was and is now being supplied)
+                #Specifically, the WGS master from the file isn't in the search list
+                unaccounted_files[Acc] = data   #Store for a downstream search
+        
+        #Remove the found file from the list of names that were provided in the search
+        num_complete_found = 0
+        num_WGS_found = 0
+        for Acc, data in fastanames.iteritems():
+            GI = Acc_convert_to_GI[Acc]
+            try:
+                index = complete_IDs.index(GI)
+                complete_IDs.pop(index)
+                num_complete_found += 1
+            except:
+                try:
+                    index = wgs_master_GIs.index(GI)
+                    wgs_master_GIs.pop(index)
+                    WGS_IDs.pop(index)
+                    num_WGS_found += 1
+                except:
+                    pass
+        
+        if len(unaccounted_files.keys()) > 0 and len(wgs_master_GIs) > 0:  #check to see if there are remaining files and WGS files that could be associated
+            for Acc, data in unaccounted_files.iteritems():
+                if data[2] == "WGS":
+                    with open(data[0], 'rU') as fileobj:
+                        for line in fileobj:
+                            if line[0] == '>':
+                                Acc_num_contig = line.split()[0].split("|")[1]
+                                for Acc2 in Accs:  #Need to be explicit to search substrings in order to try to get RefSeq/INDSC renames 
+                                    if Acc_num_contig in Acc2:               #if location position of misplaced WGS tag, include in search and remove from download list
+                                        fastanames[Acc] = files_in_dir[Acc]   
+                                        try:
+                                            index = wgs_master_GIs.index(Acc_convert_to_GI[Acc2])
+                                            wgs_master_GIs.pop(index)
+                                            WGS_IDs.pop(index)
+                                            num_WGS_found += 1 
+                                            break
+                                        except ValueError:
+                                            pass
+                                        except KeyError:
+                                            pass
+                                        
+        if num_complete_found + num_WGS_found > 0:
+            print("{0} of {1} unfragmented genomes and {2} of {3} fragmented genomes have already been downloaded.".format(num_complete_found, found_complete, num_WGS_found, found_WGS))                                              
+    else:
+        Acc_convert_to_GI = {}
+    
+    found_complete = len(complete_IDs)   #recalculate total
+    found_WGS =  len(WGS_IDs) 
+    total = found_complete + found_WGS                    
+    
+    if total > 100 and num_limit > 100 and ask:
+        while True:
+            check = raw_input("The number of files to download likely exceeds 200 Mb, would you like to continue? (y/n): ")
+            if check.lower() == 'y':
+                print("Fetching...")
+                break
+            elif check.lower() == 'n':
+                print("Aborting...")
+                return
+                break
+            else:
+                print("Please select yes(y) or no(n).")     
+    
+    #Download the complete genomes first
+    batch_size = 5
+    num_complete = len(complete_IDs)
+    for start in range(0, num_complete, batch_size):
+        end = min(num_complete, start+batch_size)
+        print("Downloading unfragmented genome records %i to %i of %i" % (start+1, end, num_complete))
+        attempt = 1
+        IDs = complete_IDs[start:end]
+        while attempt <= 3:
+            try:
+                fetch_handle = Entrez.efetch(db="nucleotide", rettype="fasta", retmode="text", retmax=batch_size, id=IDs)
+                data = fetch_handle.read().split("\n\n")
+                fetch_handle.close()
+                break
+            except httplib.IncompleteRead:
+                if attempt == 3:
+                    print("httplib.IncompleteRead error when downloading a genome. Reached limit of {0} failed attempts.".format(attempt))
+                    return
+                else:
+                    print("httplib.IncompleteRead error when downloading a genome. Attempt #{0}. Retrying...".format(attempt))
+            except HTTPError as err:
+                if 500 <= err.code <= 599:
+                    print("Received error from server %s" % err)
+                    print("Attempt %i of 3" % attempt)
+                    attempt += 1
+                    time.sleep(15)
+                else:
+                    raise
+            attempt += 1
+        for index in range(0,len(IDs)):
+            Acc_num = data[index].split(" ")[0][1:]
+            filename = current_dir+"downloaded_genomes/" + Acc_num.split(".")[0] + ".fasta"
+            fastanames[Acc_num] = [filename, "lookup","complete"]
+            with open(filename, "w") as output:
+                output.write(data[index]) 
+                num_downloaded += 1                               
+
+    #Convert the WGS names from GIs to Accession
+    fetch_handle = Entrez.efetch(db="nuccore", id=wgs_master_GIs, rettype="acc", retmode="text")
+    wgs_masters_Acc = [id.strip() for id in fetch_handle]
+    fetch_handle.close()
+    
+    #Download each WGS genome as a batch
+    WGS_num = 0
+    num_WGS = len(WGS_IDs)
+    for WGS_sublist in WGS_IDs:
+        contigs = len(WGS_sublist)  #Number of contigs in a WGS project
+        if WGS_num % 10 == 0:
+            print("Downloading fragmented genome records %i to %i of %i" % (WGS_num+1, min(WGS_num+10,num_WGS), num_WGS))
+        attempt = 1
+        while attempt <= 3:
+            try:
+                fetch_handle = Entrez.efetch(db="nucleotide", rettype="fasta", retmode="text", retmax=contigs, id=WGS_sublist)
+                data = fetch_handle.read()
+                fetch_handle.close()
+                break
+            except HTTPError as err:
+                if 500 <= err.code <= 599:
+                    print("Received error from server %s" % err)
+                    print("Attempt %i of 3" % attempt)
+                    attempt += 1
+                    time.sleep(15)
+                else:
+                    raise
+        
+        #retrieve the master accession number, stored from before
+        if data != []:
+            Acc_num = wgs_masters_Acc[WGS_num]
+            pieces = data.split("\n\n")
+            filename = current_dir+"downloaded_genomes/" + Acc_num.split('.')[0] + ".fasta"
+            fastanames[Acc_num] = [filename, "lookup", "WGS"]                 
+            
+            with open(filename, "w") as output:                         #(other catches later will recognize the Accession #)
+                for piece in pieces:
+                    if piece != '':
+                        true_accession = piece.split(" ")[0][1:].strip()
+                        header = ">{0}|{1}\n".format(Acc_num,true_accession)
+                        output.write(header)
+                        output.write("".join(piece.split("\n")[1:]) + "\n")
+                num_downloaded += 1              
+        WGS_num += 1
+    complete_IDs = []  #clear memory space
+    WGS_IDs = []
+    
+    if num_downloaded > 0:                                                                                                                  
+        print("Downloaded {0} sequences to analyze for anti-CRISPR sequences.".format(num_downloaded))
+    else:
+        print("No need to download more sequences.")
+
+    return fastanames,Acc_convert_to_GI
+
+def spacer_scanner(fastanames,crt_path,repeats,current_dir):
+
+    #Search each genome for CRISPR repeats
+    print("Searching for CRISPR spacer-repeats...")
+    CRISPR_results = []    #list of files with CRISPR loci search results
+    genomes_searched = []
+    bad_genomes = []
+    Ns = "N"*300
+    for fastaname, holder in fastanames.iteritems():
+        print(fastaname)
+        good_genome = True
+        filein = holder[0]
+        if current_dir in filein:
+            filein=  filein.split(current_dir)[1]  #These lines are only for my local because of the Dropbox formatting problem
+        if not os.path.exists("CRISPR_analysis"):
+            os.mkdir("CRISPR_analysis")
+        #Check that the genome file has data in it
+        with open(filein, 'rU') as file1:
+            lines = file1.readlines()
+        if len(lines) <= 1:
+            print('No genomic data in {0}. Skipping...'.format(fastaname))
+            good_genome = False
+        else:
+            for line in lines:
+                if Ns in line:
+                    print('Long string of Ns in {0}. Will confound CRISPR array analysis. Skipping...'.format(fastaname))
+                    good_genome = False  
+                    break  
+        if good_genome:     
+            result_file = "CRISPR_analysis/" + fastaname.split(".")[0] + ".out"
+            CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -maxRL 45 -minRL 20 -minNR {1} -maxSL 45 -minSL 18 {2} {3}".format(crt_path,repeats,filein,result_file)
+            crispr_search = subprocess.Popen(CRISPR_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output, error = crispr_search.communicate()
+            if error != '':
+                print(error + " Skipping {0}...".format(fastaname))
+            else: 
+                append = True
+                try: 
+                    with open(result_file, 'rU') as result_check:
+                        for line in result_check:
+                            if line.find("No CRISPR elements were found.") != -1:  #check to make sure at least one locus was found to continue with
+                                append = False
+                    genomes_searched.append(fastaname)
+                    if append:
+                        CRISPR_results.append([result_file, fastaname])
+                except IOError:   #can occur if no genome information in file (no results file)
+                    bad_genomes.append(fastaname)
+        else:
+            bad_genomes.append(fastaname)            
+
+    #Print out a list of the genomes analyzed
+    with open("genomes_analyzed.txt", "w") as filetemp:
+        for genome in genomes_searched:
+            filetemp.write(genome + "\n")
+    #Print out a list of the genomes that failed analysis
+    with open("genomes_failing_analysis.txt", "w") as filetemp:
+        for line in bad_genomes:
+            filetemp.write(line + "\n")
+    
+    print("Finished searching for CRISPR spacer-repeats.")
+
+    return CRISPR_results
+
+def get_loci(CRISPR_results,fastanames):
+
+    #Data is stored at the uppermost level as each genome
+    #Next level is the Acc # (0 index) and a list containing the CRISPR # and 2 member lists of the spacer sequences and their positions
+    spacer_data = []
+    genome_counter = 0
+    num_loci = []
+    for genome in CRISPR_results:
+        with open(genome[0], 'rU') as curr_file:
+            lines = curr_file.readlines()
+            if fastanames[genome[1]][1] == 'lookup' and fastanames[genome[1]][2] == 'complete':
+                spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split(" ")[0].strip(), 'lookup', 'complete']])  #if looked up, this should be the accession number
+            elif fastanames[genome[1]][1] == 'lookup' and fastanames[genome[1]][2] == 'WGS':
+                spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split("|")[0].strip(), 'lookup', 'WGS']])  #if looked up, this should be the accession number
+            elif fastanames[genome[1]][1] == 'provided' and fastanames[genome[1]][2] == 'complete':
+                try:
+                    spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split(" ")[0].strip(), 'lookup', 'complete']])  #Try to the accession number (will be there if using NCBI formatted headers)  
+                except:
+                    spacer_data.append([[lines[0].split("ORGANISM:  ")[1].strip(), 'provided', 'complete']])  #otherwise, take the provided name in fasta
+            else:
+                try:
+                    spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split("|")[0].strip(), 'provided', 'WGS']])  #Try to the accession number (will be there if using NCBI formatted headers)  
+                except:
+                    spacer_data.append([[lines[0].split("ORGANISM:  ")[1].strip(), 'provided', 'WGS']])  #otherwise, take the provided name in fasta
+            CRISPR_positions = []
+            position = 0  
+            for line in lines:
+                if line[:6] == "CRISPR":
+                    CRISPR_positions.append(position)
+                    spacer_data[genome_counter].append([line])
+                position += 1
+            CRISPR_counter = 1
+            if CRISPR_positions != []:   #check that at least one locus was found
+                for locus in CRISPR_positions:
+                    spacer_counter = 1
+                    while True:
+                        curr_spacer = lines[locus+2+spacer_counter].split("\t")[3]
+                        if curr_spacer != '\n':
+                            curr_spacer_pos = int(lines[locus+2+spacer_counter].split("\t")[0]) + int(lines[locus+2+spacer_counter].split("\t")[4].split(" ")[1][:-1])
+                            spacer_data[genome_counter][CRISPR_counter].append([curr_spacer])
+                            spacer_data[genome_counter][CRISPR_counter][spacer_counter].append(curr_spacer_pos)
+                            spacer_counter += 1
+                        else:
+                            break
+                    CRISPR_counter += 1
+        genome_counter += 1
+        num_loci.append(CRISPR_positions)         
+
+    return spacer_data,num_loci
+
+def spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir):
+
+    blast_results = []
+    num = 0
+    for genome in spacer_data:
+        #write a file of the query strings
+        if not os.path.exists("queries"):
+            os.mkdir("queries")
+        if genome[0][1] == 'lookup':
+            subject = fastanames[genome[0][0]][0]  #pulls up the file for the name provided or accession # if looked up
+            #search_for = genome[0].split(".")[0]
+            queryfilename = "queries/" + genome[0][0].split(".")[0] +"_queries.txt"
+        else: 
+            subject = fastanames[genome[0][0].split(' ')[0]][0]  #pulls up the file for the name provided or accession # if looked up
+            queryfilename = "queries/" + genome[0][0].split(".")[0] +"_queries.txt"         
+        temp_lines = []
+        for CRISPR_counter in range(1,len(num_loci[num])+1):
+            spacer_checker = []
+            for spacer_counter in range(1,len(genome[CRISPR_counter])):
+                spacer = genome[CRISPR_counter][spacer_counter][0]  #check all the spacers, making sure they have the correct characters
+                spacer_checker.append(spacer)
+            if spacer_check(spacer_checker,percent_reject):
+                for spacer_counter in range(1,len(genome[CRISPR_counter])):
+                    spacer = genome[CRISPR_counter][spacer_counter][0]
+                    temp_lines.append(">CRISPR_{0}_Spacer_{1}\n{2}\n".format(CRISPR_counter,spacer_counter,spacer))  #need an actual file for BLAST input                        
+        with open(queryfilename, "w") as queryfile:
+            for line in temp_lines:
+                queryfile.write(line)
+        if current_dir in queryfilename:
+            queryfilename = queryfilename.split(current_dir)[1]  #These lines are only for my local because of the Dropbox formatting problem
+        if current_dir in subject:
+            subject = subject.split(current_dir)[1]  #These lines are only for my local because of the Dropbox formatting problem
+        blast_cmd = "blastn -query {0} -subject {1} -outfmt 6".format(queryfilename,subject)
+        handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, error = handle.communicate()
+        blast_results.append(output.split("\n"))
+        num += 1
+    print("Finished BLASTing all spacer sequences.")
+
+    return blast_results
+
+def get_PAMs(direction,align_pos,sequence):
+    
+    if direction > 0: 
+        PAM_start = align_pos-1
+        PAM_seq_up = sequence[PAM_start-9:PAM_start].upper() 
+        
+        PAM_start = align_pos+abs(direction)
+        PAM_seq_down = sequence[PAM_start:PAM_start+9].upper()  
+    else:
+        PAM_start = align_pos
+        a = sequence[PAM_start:PAM_start+9].upper()
+        PAM_seq_up = str(Seq(a).reverse_complement())
+        
+        PAM_start = align_pos-abs(direction)-1
+        a = sequence[PAM_start-9:PAM_start].upper()
+        PAM_seq_down = str(Seq(a).reverse_complement()) 
+    
+    return PAM_seq_up,PAM_seq_down
+
+def fetch_sequence(fastanames,Acc_num,self_target_contig,provided_dir=''):
+    
+    keys = fastanames.keys()
+    if provided_dir != '':
+        try: 
+            fastaname = fastanames[Acc_num][0]
+        except:
+            for key in keys:
+                if key.find(Acc_num) > -1:
+                    fastaname = fastanames[key][0]
+                    break
+    else:
+        fastaname = fastanames[Acc_num][0]
+    contigs = []
+    fastafile = open(fastaname)
+    for item in SeqIO.parse(fastafile,"fasta"):
+            name, sequence = str(item.id), str(item.seq)
+            contigs.append([name,sequence])
+    fastafile.close()                                          
+    if len(contigs) > 1:
+        sequence = contigs[self_target_contig][1]
+    else:
+        sequence = contigs[0][1]
+    
+    return sequence
+    
+def loci_analysis_check(contig_Acc,Acc_num_self_target,crispr,genome_type,loci_checked,species='',Type=''):
+    
+    #Check whether the current Acc_num (locus position) has been already checked
+    print("Analyzing self-targeting spacer found in {0}...".format(Acc_num_self_target))
+    
+    try:
+        species,Type = loci_checked[contig_Acc + "-" + str(crispr)] 
+        need_locus_info = False  
+    except KeyError:    #Hasn't been made yet or not found
+        need_locus_info = True    #Need to determine the information and add to the dictionary
+        
+    return need_locus_info,loci_checked,species,Type
+    
+def download_genbank(contig_Acc):
+    
+    #First, pull down the GenBank records for each accession number with a self-targeting spacer (pull down locus)
+    #Can use one record for complete genomes, may need two for contigs
+    if not os.path.exists("GenBank_files"):
+        os.mkdir("GenBank_files")
+    attempt = 1
+    while attempt <= 3:
+        try:
+            #First get the genbank format and parse into SeqIO
+            genfile_name = "GenBank_files/"+contig_Acc.split(".")[0] + ".gb"
+            if not os.path.isfile(genfile_name):
+                fetch_handle = Entrez.efetch(db="nucleotide", rettype="gbwithparts", retmode="text", id=contig_Acc)
+                with open(genfile_name, 'w') as genfile:
+                    genfile.write(fetch_handle.read())
+                fetch_handle.close()
+            break
+        except httplib.IncompleteRead:
+            if attempt == 3:
+                print("httplib.IncompleteRead error at Genbank data fetch. Reached limit of {0} failed attempts.".format(attempt))
+                return
+            else:
+                print("httplib.IncompleteRead error at Genbank data fetch. Attempt #{0}. Retrying...".format(attempt))
+        except HTTPError as err:
+            if 500 <= err.code <= 599:
+                print("Received error from server %s" % err)
+                print("Attempt %i of 3" % attempt)
+                attempt += 1
+                time.sleep(15)
+            else:
+                raise
+        except:
+            raise      
+    record = SeqIO.read(genfile_name, 'genbank')
+    return record    
+    
+def find_Cas_proteins(align_pos,record,range_to_search=20000):
+    
+    #Define the region to examine coding regions
+    upstream_pos = max(1,align_pos - range_to_search)
+    downstream_pos = min(align_pos + range_to_search, len(record.seq))
+    
+    #Search through the features and find those that fall within the range defined above
+    check_list = []
+    proteins_identified = []
+    types_list = []
+    for feature in record.features:
+        if upstream_pos <= feature.location.start <= downstream_pos:
+            #Search for the CRISPR proteins
+            if feature.type == 'CDS':
+                try:
+                    protein_num = feature.qualifiers["protein_id"][0]
+                except KeyError:  #No protein_id associated, such as a pseudo-gene
+                    protein_num = ''  #will skip over when 
+                try:
+                    product = feature.qualifiers["product"][0]
+                    #Now determine if this feature encodes a Cas protein
+                    add_to_check_list = True
+                    if product == 'hypothetical protein':   #Add all hypothetical proteins by default
+                        check_list.append(protein_num)   
+                        add_to_check_list = False 
+                    else:
+                        #See if protein identified as Cas protein
+                        proteins_identified,types_list,add_to_check_list = is_known_Cas_protein(product,proteins_identified,types_list)
+                    if add_to_check_list:
+                        check_list.append(protein_num)   
+                except KeyError:
+                    add_to_check_list = False
+                
+    #Now take the proteins that weren't identified and check to see if there are any Cas proteins in them
+    if check_list != []:
+        short_names = homology_search(check_list)   #Note: order of the Cas genes is not preserved, only checks if all are present
+        for short_name in short_names:                
+            proteins_identified,types_list,not_Cas_protein = is_known_Cas_protein(short_name,proteins_identified,types_list)
+            
+    return proteins_identified,types_list
+
+def Type_check(types_list):
+    
+    #Now determine what type it is and if it is complete
+    #Determine the type by counting the Type that is the most prevalent
+    data = Counter(types_list)
+    Type = ""
+    off_count = 0
+    for most_common in data.most_common():
+        count = most_common[1]
+        if count >= off_count:
+            if Type == '':
+                Type = most_common[0]
+            elif Type.count(",") == 1:
+                Type += ", or " + most_common[0]
+            else:
+                Type += ", " + most_common[0]
+            off_count = count
+        if count < off_count or most_common == data.most_common()[-1]:  #reached end of list or found less common entry 
+            if Type.count(",") > 2:  #Too many possibilities to exactly identify
+                Type = "?"
+            elif Type.count(",") == 1:
+                Type.replace(",", " or")
+                Type += "?"
+            elif Type.count(",") == 2:
+                Type[:Type.rfind(",")] + " or" + Type[Type.rfind(",")+1:]
+                Type += "?"
+            break
+    if Type == "":
+        Type = "?"
+                
+    return Type                                              
+
+def locus_completeness_check(Type,proteins_identified):
+    
+    if Type.find("?") == -1:
+        complete_locus = CRISPR_types[Type]    #list of lists containing each protein and its alternate names
+        Cas_search = ["Proteins missing: "]
+        for proteins in complete_locus:
+            found_it = False
+            for check in proteins_identified:  #see if the list of proteins found align with what's known
+                if check in proteins:
+                    found_it = True
+            if not found_it:
+                Cas_search.append(proteins[0])
+        if Cas_search == ["Proteins missing: "]: #If nothing was added the locus is complete
+            Cas_search = ["Complete"]
+    elif Type.find("?") > -1:  #don't check if more than three (when there will only be a ?)
+        #List out the proteins that were identified, but need to cross reference to prevent doubles
+        Cas_search = ["Cas proteins found: "]
+        for Cas, types in Cas_proteins.iteritems():
+            if Cas in proteins_identified and Cas not in Cas_search:
+                Cas_search.append(Cas)
+        if Cas_search == ["Cas proteins found: "]:
+            Cas_search = ["None identified"]                                        
+    else:    #If only a question mark (i.e., too many potential (or no) CRISPR loci to tell)
+        Cas_search = ["N/A"]
+    
+    return Cas_search      
+ 
+def find_spacer_target(Acc_num_target,alt_alignment):
+    
+    #If it isn't targeting a gene, look at gene on each side
+    record = download_genbank(Acc_num_target)
+    #Find which gene is targeted by the spacer
+    self_targets = []
+    lagging_feature = ''
+    for feature in record.features:
+        if feature.type not in ('gene','source'):
+            if feature.location.start <= alt_alignment <= feature.location.end:
+                feature_num, target_protein = grab_feature(feature)
+                target_protein = label_self_target(target_protein,feature_num)
+                self_targets.append([feature_num, target_protein])
+                break
+            elif feature.location.start > alt_alignment:   #The spacer is in between this feature and the previous
+                feature_num1, target_protein1 = grab_feature(feature)
+                target_protein1 = label_self_target(target_protein1,feature_num1)
+                self_targets.append([feature_num1, target_protein1])
+                
+                feature_num2, target_protein2 = grab_feature(lagging_feature)
+                target_protein2 = label_self_target(target_protein2,feature_num2)
+                self_targets.append([feature_num2, target_protein2])
+                break       
+        lagging_feature = feature   #Used to store first feature in case spacer falls in the middle of two genes                    
+    
+    return self_targets               
+    
+def Locus_annotator(align_locus,record):                   
+   
+    #Find Cas proteins near the spacer-repeat region
+    proteins_identified,types_list = find_Cas_proteins(align_locus,record)
+    
+    #Determine what Type the locus is
+    Type = Type_check(types_list)
+    
+    #Determine whether the locus is complete
+    Cas_search = locus_completeness_check(Type,proteins_identified)
+
+    #Handle the case that occurs if Type II-C (Type II-C can't be picked unless Cas9 is annotated with 'II-C')
+    #Because Csn2 or Cas4 will automatically annotate as II-B or II-C, if all three are possible, must be II-C
+    ##NOTE THIS ASSUMES THAT A TYPE II-B OR II-A LOCUS MISSING EITHER Csn2 or Cas4 is Type II-C!!!
+    if "Type II-C" in Type:
+        if "Csn2" not in Cas_search and 'Cas4' not in Cas_search:
+            Type = "Type II-C"
+    
+    return Type,Cas_search                            
+ 
+def locus_re_annotator(imported_data):
+    
+    print("Note! Genbank files are going to be downloaded. Remove them after if unneeded.")
+    re_analyzed_data = []
+    for result in imported_data:
+        contig_Acc = result[1]  #locus Acc number
+        align_locus = result[5]  #alignment position of the self_targeting spacer in the CRISPR locus  
+        print("Reanalyzing locus found in {0}...".format(contig_Acc))
+        contig_filename = contig_Acc.split(".")[0] + ".gb"
+        if os.path.isfile("GenBank_files/{0}.gb".format(contig_filename)):
+            record = SeqIO.read(contig_filename, 'genbank')
+        else:
+            record = download_genbank(contig_Acc)
+        Type,Cas_search = Locus_annotator(align_locus,record)
+        #Convert the Cas protein search results into a printable string       
+        if len(Cas_search) > 1:
+            proteins = "".join(Cas_search[:2])
+            if len(Cas_search) > 2:
+                proteins += ", " + ", ".join(Cas_search[2:])
+        else:  
+            proteins = Cas_search[0]
+        re_analyzed_data.append(result[:11] + [Type] + [proteins] + result[13:])
+    
+    return re_analyzed_data                                                                                                                                                                                                                                                         
+                                                                 # (contig with self-target, WGS-master -str, # of contig from top -int)
+def analyze_target_region(blast_results_filtered_summary,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,contig_Accs,provided_dir,genome_type):   
+
+    #Get the sequence for the contig (or genome) containing the self-targeting spacer match
+    sequence = fetch_sequence(fastanames,Acc_num,self_target_contig,provided_dir)
+        
+    #Get the PAM sequences
+    PAM_seq_up,PAM_seq_down = get_PAMs(direction,alt_alignment,sequence) 
+    
+    #Determine whether the current contig (or genome) has already had it's locus checked
+    try:
+        loci_checked
+    except NameError:   #if doesn't exist, create
+        loci_checked = {}
+    
+    if genome_type == 'WGS':
+        contig_Acc = contig_Accs[Acc_num]
+    else:
+        contig_Acc = Acc_num
+    need_locus_info,loci_checked,species,Type = loci_analysis_check(contig_Acc,Acc_num_self_target,crispr,genome_type,loci_checked)
+    
+    if need_locus_info:
+        #Download the genbank file
+        record = download_genbank(contig_Acc)
+        
+        #Get the species name
+        species = record.description.split(",")[0]
+        if genome_type == "WGS":
+            species = species.split("contig")[0]
+            species = species.split("Contig")[0]
+            species = species.split("genomic scaffold")[0]
+            species = species.split("scaffold")[0]    
+            #species = record.features[0].qualifiers["organism"][0]
+            #if genome_type == 'complete':
+            #    species += record.features[0].qualifiers["strain"][0]
+        
+        Type,Cas_search = Locus_annotator(align_locus,record)        
+        loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type]     #Store to prevent re-searching the same locus repeatedly
+        
+    #Now search the genbank files to see what the self-targeting gene is and look up if hypothetical
+    self_targets = find_spacer_target(Acc_num_self_target,alt_alignment)
+                                                                                               
+    #Convert self-targeting information into a printable string
+    #print(self_targets)
+    if len(self_targets) == 1:
+        self_target = ", ".join(self_targets[0])
+    elif len(self_targets) == 2:
+        self_target = "Between " + ", ".join(self_targets[0]) + " & " + ", ".join(self_targets[1])   
+    elif len(self_targets) == 0:
+        self_target = 'No features in DNA'
+    else:
+        self_target = ''
+        for listx in self_target:
+            self_target = self_target + ", ".join(self_targets[0]) + " & "
+        self_target = self_target[:-3]       #remove any trailing ampersands                    
+    
+    #Convert the Cas protein search results into a printable string       
+    if len(Cas_search) > 1:
+        proteins = "".join(Cas_search[:2])
+        if len(Cas_search) > 2:
+            proteins += ", " + ", ".join(Cas_search[2:])
+    else:  
+        proteins = Cas_search[0]
+    
+    return PAM_seq_up,PAM_seq_down,species,Type,proteins,self_target
+
+def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir):
+
+    #Next, search each genome sequence for each repeat sequence and determine if it shows up more than once (bypassed CRISPR)
+    #Since the genomes, spacers, etc. are in the same order, look for the start lengths and filter out reads that were found from CRISPR search
+    blast_results_filtered_summary = []
+    contig_Accs = {}
+    genome_number = 0
+    for genome in blast_results:
+        for result in genome:
+            genome_type = spacer_data[genome_number][0][2]
+            handle = [x.strip() for x in result.split("\t") if x != '']
+            if handle != []:
+                alt_alignment = int(handle[8]) #position of CRISPR alignment (may or may not be in locus)  FROM BLAST
+                direction = int(handle[9])-int(handle[8]) #If negative, it's on the negative strand
+                if spacer_data[genome_number][0][1] == 'lookup' and genome_type == 'complete':   ##This only works becasue index numbering still matches, will not after this block 
+                    Acc_num = handle[1].strip()   #Accession number for genome used
+                    Acc_num_self_target = Acc_num           #Acc_num_self_target no longer used
+                elif spacer_data[genome_number][0][1] == 'lookup' and genome_type == 'WGS':   #Formatting in-house and dictated above
+                    Acc_num_self_target = handle[1].split("|")[1]   #Accession number for contig of found spacer (not necessarily locus)!
+                    Acc_num = handle[1].split("|")[0]   #Not GI number!! Accession of master WGS record!
+                elif spacer_data[genome_number][0][1] == 'provided' and genome_type == 'complete':  
+                    try:  #try to see if has regular NCBI header
+                        Acc_num = handle[1].strip()   #Accession number for genome used
+                        Acc_num_self_target = Acc_num   
+                    except:
+                        Acc_num = handle[1].strip()  #store the name this way if sequence was provided
+                        Acc_num_self_target = Acc_num
+                else:   ##If provided and WGS
+                    try:  #try to see if has an NCBI header that I formatted for the contigs
+                        Acc_num_self_target = handle[1].split("|")[1]   #Accession number for contig of found spacer (not necessarily locus)!
+                        Acc_num = handle[1].split("|")[0]   #Not GI number!! Accession of master WGS record!
+                    except:
+                        Acc_num = handle[1].strip()  #store the name this way if sequence was provided
+                        Acc_num_self_target = Acc_num
+
+                crispr = int(handle[0].split("_")[1])
+                spacer = int(handle[0].split("_")[3]) 
+                spacer_seq = spacer_data[genome_number][crispr][spacer][0]
+                #search data for GI, then CRISPR/spacer combination, then see if the position is the previously determined
+                for x in spacer_data:
+                    if x[0][0] == Acc_num:
+                        #Check that the spacer is not occurring in one of the loci that was predicted
+                        align_locus = x[crispr][spacer][1] #Position of CRISPR spacer in locus
+                        if genome_type == 'complete':
+                            for locus in range(1,len(x)):
+                                locus_range = [int(y) for y in x[locus][0].split("Range: ")[1].strip().split(" - ")]
+                                if locus_range[0] - pad_locus <= alt_alignment <= locus_range[1] + pad_locus:  #if falls within any locus
+                                    outside_loci = False
+                                    break
+                                else:
+                                    outside_loci = True
+                                    self_target_contig = Acc_num_self_target   #for complete data, these will never be different
+                        else: #(genome_type is WGS)
+                            #Because the CRISPR search tool is not intelligent, need to convert position of spacer within entire file to within the contig of interest
+                            #First need to determine the length of each contig (CRISPR find tool ignores newlines and first line in length
+                            contig_lengths = []
+                            contigs_file = fastanames[Acc_num][0]
+                            with open(contigs_file, 'rU') as fileobj:
+                                lines = fileobj.readlines()
+                            summ = 0
+                            contig_num = 0
+                            for line in lines:
+                                #because the order of the contigs is not determined (based on NCBI download order), need to find where it is in fasta file
+                                if line.find(Acc_num_self_target) > -1:
+                                    self_target_contig = contig_num  #Gives the contig number from the top
+                                if contig_num == 0:
+                                    summ = 1     #the current implementation is a bit ad hoc, essentially giving a slight pad to the locus, could always manually override.
+                                else:
+                                    summ += len(line.strip()) 
+                                if line[0] == '>':
+                                    contig_lengths.append(summ)  #Thus, the contig_length list will be a sum of the character list up to the end of each contig
+                                    contig_num += 1
+                
+                            #Need to adjust locus range by subtracting all of the contigs that are farther up in the file
+                            #Determine how many contigs need to be subtracted
+                            
+                            #if direction > 0:
+                            #    subtract = contig_lengths[self_target_contig]  #The number of characters up to the beginning of the hit contig
+                            #else:
+                            subtract = contig_lengths[self_target_contig]  #If in the opposite orientation, the last line will count toward 
+                            
+                            outside_loci = True              
+                            for locus in range(1,len(x)):
+                                locus_range = [int(y) for y in x[locus][0].split("Range: ")[1].strip().split(" - ")]
+                                lower_limit = locus_range[0] - pad_locus - subtract
+                                if lower_limit < 1:
+                                    lower_limit = 1
+                                upper_limit = locus_range[1] - subtract + pad_locus
+                                if lower_limit <= alt_alignment <= upper_limit:  #if falls within any locus
+                                    outside_loci = False
+                                    break
+                            
+                            if outside_loci:
+                                #Determine what contig the locus is in (align_locus)
+                                #First open the right file and find the order of contigs
+                                filetocheck = fastanames[Acc_num][0]
+                                contigs = []
+                                with open(filetocheck, 'rU') as findlocus:
+                                    for line in findlocus:
+                                        if line[0] == '>':
+                                            contigs.append(line.split("|")[1].strip())
+                                #determine which contig it was in based on the lengths determined above & its correct length within its fragment
+                                contig_num = 0
+                                for length in contig_lengths:
+                                    if align_locus < contig_lengths[contig_num+1]:
+                                        contig_Accs[Acc_num] = contigs[contig_num]   #allows for conversion later between WGS master and spacer containing contig (locus)
+                                        align_locus -= contig_lengths[contig_num]
+                                        break
+                                    elif contig_num == len(contig_lengths) - 2:  #At the second to last contig (but align_locus is larger), means contig is last position
+                                        contig_Accs[Acc_num] = contigs[contig_num+1]   #allows for conversion later between WGS master and spacer containing contig (locus)
+                                        align_locus -= contig_lengths[contig_num+1]
+                                        break
+                                    contig_num += 1    
+                                                                                    
+                        if outside_loci:   #only keep alignments that don't match 
+                            #Determine what the'PAM' sequence is after the non-locus alignment to report                                           (contig with self-target, WGS-master -str, # of contig from top -int)                        (converts WGS->Locus Acc)
+                            PAM_seq_up,PAM_seq_down,species,Type,proteins,self_target = analyze_target_region(blast_results_filtered_summary,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,contig_Accs,provided_dir,genome_type)
+                            blast_results_filtered_summary.append([Acc_num_self_target,Acc_num,crispr,spacer,alt_alignment,align_locus,PAM_seq_up,spacer_seq,PAM_seq_down,"N/A",species,Type,proteins,self_target])  
+                                
+        genome_number += 1 
+    if blast_results_filtered_summary == []:
+        print("No self-targeting spacers found. Exiting...")
+        sys.exit()
+    else:
+        print("Done searching for self-targeting spacers. {0} self-targeting spacers found in total.".format(len(blast_results_filtered_summary)))
+
+    return blast_results_filtered_summary,contig_Accs
+
+def Export_results(in_island,not_in_island,unknown_islands,contig_Accs={},fastanames={}):
+
+    #Export blast results that are in islands to a separate file 
+    output_results(in_island,contig_Accs,fastanames,"Spacers_inside_islands.txt")
+                                            
+    #Export blast results that aren't in islands to a separate file 
+    output_results(not_in_island,contig_Accs,fastanames,"Spacers_outside_islands.txt")
+            
+    if unknown_islands != []:
+        #Export blast results that aren't analyzed with PHASTER into a last file
+        output_results(unknown_islands,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
+    elif os.path.exists("Spacers_no_PHASTER_analysis.txt"):   #deletes the temporary file
+        os.remove("Spacers_no_PHASTER_analysis.txt")
+    
+def output_results(results,replacement_dict,fastanames,filename):
+    #Export results to a separate file 
+    with open(filename,"w") as bfile:
+        bfile.write("Target Accession#\tLocus Accession#\tCRISPR #\tSpacer #\tSpacer Target Pos.\tSpacer Locus Pos.\tPAM Region (Upstream)\tSpacer Sequence\tPAM Region (Downstream)\tPHASTER Island #\tSpecies\tType\tLocus Makeup\tSelf-Target(s)\n") 
+        if results != []:
+            for line in results:
+                if replacement_dict != {} and fastanames != {}:
+                    x=''
+                    if fastanames[line[1]][2] == 'WGS':
+                        replace_Acc = True
+                    else:
+                        replace_Acc = False
+                    column = 0
+                    for y in line:
+                        if column == 1 and replace_Acc:
+                            x = x + replacement_dict[y] + '\t'
+                        else:
+                            x = x + str(y) + "\t"
+                        column += 1
+                    bfile.write(x+"\n") 
+                else:
+                    bfile.write("\t".join([str(x) for x in line]) + '\n') 
+
+def is_known_Cas_protein(product,proteins_identified,types_list,add_to_check_list=True):
+    
+    for key,values in Cas_proteins.iteritems():
+        if product.find(key) > -1:
+            if key not in proteins_identified:   #Don't add multiple copies
+                proteins_identified.append(key)
+            #Check to see if the protein type is annotated
+            parts = [x.lower() for x in product.split(" ")]
+            for part in parts:
+                if "type" in part and part != parts[-1]:   #ignore things that end in type
+                    type_expected = "Type " + parts[parts.index(part) + 1].upper()  #find type and look next to it for the designation
+                    #If a type pops up, but the letter is not there, add all possibilities
+                    for value in values:
+                        if type_expected in value:
+                            types_list.append(value)  #Adds weight that the proper type will be identified
+                    break
+            types_list += values   #the correct Type will have the most entries in this list
+            add_to_check_list = False
+            break 
+    return proteins_identified,types_list,add_to_check_list    #Returns the CRISPR type if detected and whether the locus appears complete
+
+def grab_feature(feature):
+    
+    try:
+        feature_num = feature.qualifiers["protein_id"][0]
+        target_protein = feature.qualifiers["product"][0] 
+    except KeyError, AttributeError:  #No protein_id associated, such as a pseudo-gene, or not a protein
+        try:
+            feature_num = "locus tag: " + feature.qualifiers["locus_tag"][0] 
+            target_protein = feature.type 
+        except KeyError, AttributeError:
+            feature_num = feature.type
+            target_protein = str(feature.location)
+        
+    return feature_num, target_protein
+
+def homology_search(check_list):
+    
+    ##Need to POST data to CDD     https://www.ncbi.nlm.nih.gov/Structure/bwrpsb/bwrpsb.cgi
+    #cdsid - search string associated with the requested search
+    #db - specify name of database
+    #smode = search mode (auto)
+    #queries - Acc numbers
+    #tdata - data type (target data) desired in the output. Allowable values are: "hits" (domain hits), "aligns" (alignment details), or "feats" (features).
+    
+    session = requests.session()
+    url = "https://www.ncbi.nlm.nih.gov/Structure/bwrpsb/bwrpsb.cgi"  #batch input
+    new_search = {"db":"cdd",     #Define the dictionary that will POST the details of search for the unknown proteins
+                "smode":"auto",
+                "queries":check_list,  
+                "dmode":"full",
+                "tdata":"hits"}
+    
+    #POST the results first 
+    tries = 0
+    while tries <= 3:
+        tries += 1
+        try:
+            r = session.post(url, new_search,timeout=40)
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout):
+            time.sleep(5) #wait an additional 5 seconds before trying again
+            
+    try_count = 0
+    while try_count <= 30:
+        try_count += 1
+        short_names = []
+        
+        for line in r.text.encode('utf-8').split("\n"):
+            if line.find("cdsid") > -1:
+                cdsid = line.split("cdsid")[1].strip()  #Extract the cdsid number
+            if line.find("status") > -1:
+                statuscode = line.split("\t")[1].strip()   #0 - success, 2 - no input, 3 - running, 1,4,5 are errors
+                break
+        
+        if statuscode in ('1','4','5'):
+            print("Error in protein homology search. Skipping entry...")    
+        elif statuscode == '2':
+            #nothing to check, should be caught above
+            break
+        elif statuscode == '3':
+            time.sleep(5) 
+            tries = 0
+            while tries <= 3:
+                tries += 1
+                try:
+                    r = session.get(url+"?cdsid={0}".format(cdsid),timeout=30)   #Retry after 5 seconds with GET
+                except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout):
+                    time.sleep(5) #wait an additional 5 seconds before trying again
+        elif statuscode == '0':
+            #Parse out the data
+            for line in r.text.encode('utf-8').split("\n"):
+                data = line.split("\t")                        
+                if data[0].split(" - ")[0][:2] == "Q#":  #look for results by finding early tags
+                    short_names.append(data[8])
+            break        
+    
+    return short_names
+
+def label_self_target(target_protein,feature_num):
+    
+    if target_protein == 'hypothetical protein':
+        short_names = homology_search([feature_num])
+        if len(short_names) > 3:
+            target_protein = ", ".join(short_names[:3]) + " (CDD homology search)"
+        elif len(short_names) > 0:
+            target_protein = ", ".join(short_names)  + " (CDD homology search)"
+   
+    return target_protein
+
+def anti_CRISPR_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,ask=False):
+
+    if num_limit == 0:
+        num_limit = default_limit        
+    
+    #Creates a report of the search parameters
+    print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,repeats,percent_reject,skip_PHASTER,all_islands,in_islands_only,skip_family_create,skip_family_search,families_limit)
+    
+    #Fetch the fasta files in the provided directory
+    if provided_dir != '':
+        fastanames,provided_complete_counter,provided_WGS_counter = load_provided(provided_dir,num_limit,complete_only)
+   
+    #Search NCBI using the given term, finding all relevant genomes
+    if search != '':
+        found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes = search_NCBI_genomes(search,num_limit,complete_only)
+        #Download the appropriate genomes
+        if provided_dir == '':
+            fastanames = {}
+        fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask)
+
+    #Search each genome for CRIPSR repeat-spacers
+    CRISPR_results = spacer_scanner(fastanames,crt_path,repeats,current_dir)
+    
+    #BLAST each spacer sequence against the genome
+    spacer_data,num_loci = get_loci(CRISPR_results,fastanames)
+
+    #Check to see which of the spacers appears in the genome outside of any indentified CRIPSR loci
+    blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir)
+
+    #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
+    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir)
+    
+    #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
+    output_results(blast_results_filtered_summary,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
+    
+    if not skip_PHASTER:
+        in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(blast_results_filtered_summary,current_dir,in_islands_only,all_islands,skip_family_create)
+        Export_results(in_island,not_in_island,unknown_islands,contig_Accs,fastanames)
+        print("PHASTER analysis complete.")
+    else:
+        protein_list = []
+        print("Skipping PHASTER analysis")
+
+    return protein_list 
+        
+def mine_proteins(protein_list,Acc_to_search,proteins_found,region,hit_num=None,all_islands=False):
+    
+    #Now want to mine all of the unassigned/predicted proteins 
+    webcall = "http://phaster.ca/jobs/{0}/detail.txt".format(Acc_to_search)
+    tries = 0
+    while True:
+        tries += 1
+        try:
+            q = requests.get(webcall, timeout=20)  #do a PHASTER search in the potential hits genome
+            break
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
+            time.sleep(5)  #wait 5 seconds and retry
+        if tries > 3:
+            print("PHASTER server not responding to query for details on {0}. Skipping...".format(Acc_to_search))
+            break
+    q2 = q.text
+    q3 = q2.split("\n")
+    protein_list.append([proteins_found])
+    right_region = False
+    for protein in q3:
+        if right_region == True and protein.strip() != '' and protein.strip()[:3] != '###':
+            island_protein = [str(x).strip() for x in filter(None, protein.split("  "))]
+            phrases_to_search = ["hypothetical", "phage-like"]
+            for phrase in phrases_to_search: 
+                if island_protein[1].find(phrase) > -1:
+                    protein_list[hit_num].append(island_protein) 
+        elif right_region == False:
+            if protein[:12] == "#### region ":
+                if all_islands:
+                    right_region = True   #if recording all proteins from islands, skip finding if in same one as spacer
+                else:                                        
+                    current_region = int(protein.split("region ")[1].split(" ####")[0])
+                    if current_region == region: ##That is, is the current region cycling through the one the spacer is in
+                        right_region = True
+        elif protein.strip() == '' or protein.strip()[:3] == "###" and right_region == True:
+            right_region = False
+            if not all_islands:
+                break     #found the right region and all the proteins have been checked
+    hit_num+=1
+    return protein_list,hit_num       
+              
+def PHASTER_analysis(blast_results_filtered_summary,current_dir,in_islands_only=True,all_islands=False,skip_family_create=True):
+
+    in_island = []
+    not_in_island = []
+    unknown_islands = []       
+    protein_list = []
+    #Now will search to see if hits are in phage islands using PHASTER
+    #and store all the unassigned proteins per hit
+    print("Running PHASTER analysis...")
+    if not os.path.exists("PHASTER_analysis"):
+        os.mkdir("PHASTER_analysis")
+    hit_num = 0
+    skip_entry = True
+    for potential_hit in blast_results_filtered_summary:
+        #First determine if the analysis has been done before
+        Acc_to_search = potential_hit[0]  #If WGS, use the contig itself to search                        
+        PHASTER_file = current_dir+"PHASTER_analysis/" + Acc_to_search.split(".")[0] + ".txt"
+        if os.path.isfile(PHASTER_file):
+            #If it has, just load the results
+            with open(PHASTER_file, 'rU') as input_file:
+                lines = [x.strip() for x in input_file.readlines()]
+            if lines != []:
+                skip_entry = False
+            else:
+                os.remove(PHASTER_file)
+        if skip_entry:   #if a PHASTER file wasn't found, do the search
+            lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir)  #first try a simple lookup with the the Acc number, post the sequence if it fails
+            if skip_entry == True:   #If a simple Acc lookup didn't work, try POSTing genbank files
+                lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=True) 
+        if skip_entry == False:
+            record = False
+            region = 0
+            found_island = False
+            for line in lines:
+                if record == True:
+                    region += 1  #note what region the spacer was found in
+                    string = line.strip()
+                    results = filter(None, string.split(" "))
+                    if results != []:
+                        island_start = int(results[4].split("-")[0])
+                        island_end = int(results[4].split("-")[1])
+                        spacer_pos = potential_hit[4]
+                        start_mining = False
+                        temp = potential_hit
+                        if island_start <= spacer_pos <= island_end-len(potential_hit[7]):  #check to see if in an island
+                            start_mining = True
+                            found_island = True
+                            temp = potential_hit[:9] + [region] + potential_hit[10:]   #replace 'N/A' in PHASTER island with the island number
+                        elif all_islands and not in_islands_only:  #If not, see if the protein should be grabbed anyway due to opions
+                            start_mining = True   
+                        if start_mining and not skip_family_create:    
+                            mine_proteins(Acc_to_search,temp,region,hit_num,all_islands)       
+                    elif region == 1 and results == []:
+                        temp = potential_hit[:9] + ["none identified"] + potential_hit[10:]   #replace 'N/A' in PHASTER island if no islands are found   
+                    elif region > 1 and not found_island:  
+                        temp = potential_hit[:9] + ["outside island(s)"] + potential_hit[10:]   #replace 'N/A' in PHASTER island if spacer found outside all the islands   
+                    if found_island:
+                        break #exit the outer loop, found it
+                elif line.strip()[-4:] == "----":
+                    record = True
+            if not found_island:   #put into categories based on whether it was in an island
+                not_in_island.append(temp)
+            else:
+                in_island.append(temp)
+        else: 
+            print("Skipping analysis of {0}".format(Acc_to_search))
+            unknown_islands.append(potential_hit)
+    print("PHASTER analysis finished.")
+    
+    return in_island,not_in_island,unknown_islands,protein_list
+
+def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
+    
+    #Use post to switch to uploading sequence that doesn't have an Acc number, not written into code yet
+    lines = []
+    Acc_to_print = Acc_to_search
+    url = "http://phaster.ca/phaster_api"
+    while True:
+        try:
+            if post:
+                #Get the GenBank file and post that
+                genfile_name = current_dir+"GenBank_files/"+Acc_to_search.split(".")[0] + ".gb"
+                if not os.path.exists(genfile_name):
+                    print("GenBank file for {0} needed and missing, downloading...".format(Acc_to_search))
+                    record = download_genbank(Acc_to_search)
+                else:
+                    record = SeqIO.read(genfile_name, 'genbank')
+                seq_len = len(record.seq)
+                if seq_len >= 2000:    #Required for PHASTER
+                    with open(genfile_name, 'rb') as payload:
+                        headers = {'content-type': 'application/x-www-form-urlencoded'}
+                        r = requests.post(url,data=payload, verify=False, headers=headers)
+                else:
+                    print("Contig {0} is only {1} nts, skipping...".format(Acc_to_search,seq_len))
+                    skip_entry = True
+                    lines = []
+                    time.sleep(1)
+                    return lines,skip_entry    
+            else:
+                r = requests.get(url+"?acc={0}".format(Acc_to_search), timeout=20)  #do a PHASTER search in the potential hits genome
+            r2 = r.json()
+            if post:
+                Acc_to_search = str(r2[u'job_id'])   #switch Acc_to_search temporarily to the idea to search
+                post = False  #Once posted, can switch to GET for job status requests
+            try:
+                r3 = r2[u'summary']
+                lines = str(r3).split("\n")
+                skip_entry = False
+                break
+            except:
+                try:
+                    msg = str(r2[u'error']).strip()
+                    print(msg + "\nError with PHASTER looking for {0}".format(Acc_to_print))
+                    skip_entry = True
+                    lines = []
+                    time.sleep(1)
+                    return lines,skip_entry
+                except:
+                    msg = str(r2[u'status']).strip()
+                    print("Waiting for PHASTER to analyze {0}... Status: ".format(Acc_to_print) + msg)
+                    time.sleep(30)           #wait 30s before retrying 
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
+            time.sleep(3)  #wait 3 seconds before retrying
+            pass    
+    
+    #Write the PHASTER results to a file
+    with open(PHASTER_file, "w") as jot_notes:
+        for line in lines:
+            jot_notes.write(line + "\n")                     
+
+    return lines,skip_entry
+
+def family_cluster(protein_list,E_value_limit=1e-3):
+
+    #Iteratively BLAST all proteins against all other proteins, but only blast those that haven't been aligned yet
+    #If makes a certain cutoff, store as a site for that protein
+    protein_hits_dict = {}
+    protein_hits_list = []
+    for spacer in protein_list:
+        store_spacer = spacer[0]
+        for index in range(1,len(spacer)):
+            protein_hits_dict[spacer[index][1].replace(" ","_")] = [spacer[index][3], store_spacer]  #makes a dictionary of proteins with name, sequence in each element
+            protein_hits_list.append([spacer[index][1],spacer[index][3]])  #name, protein sequence
+    BLAST_file = "subject_list.fasta"  
+    query_file = "query.fasta"
+    
+    #Now, split the fasta file entry by entry, so only aligning down the list
+    families = []     #blast check for identities
+    protein_counter = 0
+    for protein_num in protein_hits_list:
+        #write a short file for the query
+        with open(query_file, "w") as compiled_file:  #need to write a file for the blastp input (can't pass for multiple)
+            name = protein_hits_list[protein_counter][0].replace(" ","_")
+            AAseq = protein_hits_list[protein_counter][1]
+            compiled_file.write(">{0}\n{1}\n".format(name,AAseq))   
+        
+        #write out the rest of the proteins in a separate subject file
+        with open(BLAST_file, "w") as compiled_file2:  #need to write a file for the blastp input (can't pass for multiple)
+            for protein in protein_hits_list[protein_counter+1:]:
+                name = protein[0].replace(" ","_")
+                AAseq = protein[1]
+                compiled_file2.write(">{0}\n{1}\n".format(name,AAseq))     
+                
+        blast_cmd = "blastp -query {0} -subject {1} -outfmt 6".format(query_file,BLAST_file)
+        handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, error = handle.communicate()
+        
+        temp_list = [protein_num[0].replace(" ","_")]
+        for line in output.split("\n"):
+            if line.strip() != '':
+                result = line.split('\t')
+                E_value = float(result[-2])
+                target = result[1]
+                #query, target, ident, length, bit = result[0], result[1], result[2], result[3], float(result[-1]) 
+                if E_value <= E_value_limit:  #default is 1e-3
+                    temp_list.append(target)
+        fam_num = 0
+        no_family_match = True
+        for family in families:
+            ## look at protein 1 vs. 2-99, save list of matches E-value <= 1e-3 as 1, put blank if none
+            ## look at protein 2 vs. 3-99, obtain  list of matches E-value <= 1e-3 
+            #   check group 1 if contains 2, if yes, add to previous group (1), if in no groups make new group (2)
+            for member in family:
+                if protein_num[0] == member:
+                    families[fam_num].append(temp_list)
+                    no_family_match = False   
+            fam_num += 1
+        if no_family_match == True and len(temp_list) > 1:
+            families.append(temp_list) 
+        protein_counter += 1
+
+    #Export in-island blast results to fasta format
+    with open("full_protein_list.txt","w") as ifile:
+        for line in protein_list:
+            y = 1
+            for x in line:
+                if y > 1:
+                    ifile.write(">"+str(x[1]).replace(" ","_")+"\n" + str(x[3]) + "\n")
+                y += 1    
+                
+    #check for duplicates in the alignment matrix (by sequence) and remove them, remove family if only one entry remains after duplicates
+    family_no = 0
+    for family in families:
+        num_members = len(family)
+        member_no = 0
+        for member in family:
+            member_seq = protein_hits_dict[member][0]
+            for x in range(num_members-1,member_no,-1):  #search backwards so the index numbers don't change as being removed.
+                check_seq = protein_hits_dict[family[x]][0]
+                if member_seq == check_seq:
+                    del families[family_no][x]
+                    num_members -= 1  #if removed, one less
+            member_no += 1 #keeps track of position of the member being checked
+        family_no += 1 
+    ordered_families = sorted(families, key=len, reverse=True)
+    families = []
+    for family in ordered_families:
+        if len(family) > 1:          #remove single element families
+            families.append(family)          
+    print("Finished assigning protein families.")
+    return families,protein_hits_dict,query_file,BLAST_file
+
+def families_print(families,protein_hits_dict,families_limit):
+
+    #Output the lists of protein families with details
+    families_file = "potential_families.txt"
+    fam_num = 1
+    with open(families_file, "w") as fileobj:    
+        fileobj.write("GI #\tAccession #\tCRISPR #\tSpacer #\tSpacer Locus Pos.\tSpacer Genome Pos.\tSpacer Sequence\tPAM Region\tPHASTER Island\tProtein Name\tAA Sequence")
+        for family in families:
+            if fam_num <= families_limit:
+                fileobj.write("\nCandidate Family {0}".format(fam_num))
+                for member in family:
+                    member_seq = protein_hits_dict[member][0]
+                    details = protein_hits_dict[member][1]
+                    member_details = [str(x) for x in details]
+                    fileobj.write("\n{0}\t{1}\t{2}".format("\t".join(member_details),member,member_seq))
+                fileobj.write("\n")  #add a space to separate families
+            fam_num += 1
+
+    #Also create a file that has just the first member of each family in fasta format to search for conserved domains, etc.
+    with open("family_representatives.fasta", "w") as domain_file:
+        family_no = 1
+        for family in families:
+            name = "Family {0} Representative".format(family_no)
+            seq = protein_hits_dict[family[0]][0]
+            domain_file.write(">{0}\n{1}\n".format(name, seq))
+            family_no += 1
+
+def families_search(families,families_limit,current_dir,search='',E_value_limit=1e-3):
+    
+    if families == []:
+            print("No families found.")             ####This part should be recoded with CDD
+            return
+    if not os.path.exists("Family_BLASTs"):
+        os.mkdir("Family_BLASTs")
+    print("Waiting for BLAST of families against NCBI database....")
+    with open("family_representatives.fasta", 'rU') as inputfile:
+        fasta2 = SeqIO.parse(inputfile, 'fasta')
+        family_no = 1
+        for record in fasta2:
+            if family_no <= families_limit:
+                if search != '':
+                    ignore_results = "NOT {0}".format(search)
+                else:
+                    ignore_results = ''
+                blastp2 = NCBIWWW.qblast("blastp", 'nr', record, entrez_query=ignore_results, expect=E_value_limit, hitlist_size=10, format_type="Text")
+                with open(current_dir+"Family_BLASTs/family_{0}_BLAST.txt".format(family_no), "w") as save_file: 
+                    for lines in blastp2:
+                        save_file.write(lines)    
+                family_no += 1
+    blastp2.close()
+    print("Completed BLAST of family representatives to NCBI database")
+
+def families_alignment(families,protein_hits_dict,current_dir):
+
+    #Now use either BLAST or Clustal Omega to do the alignment and report results
+    fam_num = 1
+    results_dir = current_dir+"Candidate_family_alignments/"
+    if not os.path.exists(results_dir):
+        os.mkdir("Candidate_family_alignments")
+    for family in families:
+        if len(family) > 2:
+            #Use Clustal Omega to compare 3+
+            output_file = results_dir + "family_{0}.aln".format(fam_num)
+            with open(current_dir+"clustal_temp.fasta","w") as holder:
+                for member in family:
+                    holder.write(">{0}\n{1}\n".format(member,protein_hits_dict[member][0]))        
+            clustal_cmd = "clustalo -i {0} -o {1} --force".format("clustal_temp.fasta",output_file)
+            clo = subprocess.Popen(clustal_cmd.split())
+            clo.communicate()
+        else:
+            #Use BLAST to compare two sequences
+            output_file = results_dir + "family_{0}.txt".format(fam_num)
+            with open("Blast_q_temp.fasta","w") as holder:        
+                holder.write(">{0}\n{1}\n".format(family[0],protein_hits_dict[family[0]][0]))
+            with open("Blast_s_temp.fasta","w") as holder:  
+                holder.write(">{0}\n{1}\n".format(family[1],protein_hits_dict[family[1]][0]))
+            blast_cmd = "blastp -query {0} -subject {1} -outfmt 0".format("Blast_q_temp.fasta","Blast_s_temp.fasta",output_file)
+            handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output, error = handle.communicate()
+            with open(output_file,"w") as result:
+                result.write(output)
+        fam_num += 1
+    print("Family alignments complete.")
+
+def anti_CRISPR_cluster_tool(protein_list,E_value_limit,families_limit,search='',skip_family_search=True,skip_family_create=True,skip_alignment=True):
+
+    if protein_list == []:
+        print("No candidate proteins found. Exiting...\n")
+        return
+    
+    #BLAST all the protein results against themselves to see if any proteins group together
+    families,protein_hits_dict,query_file,BLAST_file = family_cluster(protein_list,E_value_limit)
+ 
+    #Output information about the families that were determine
+    families_print(families,protein_hits_dict,families_limit)
+ 
+    #Compare families to what's on NCBI (this sould be CDD, not blast)
+    if not skip_family_search:
+        families_search(families)
+    
+    #Align the families using ClustelO or BLAST
+    if not skip_alignment:
+        families_alignment(families,protein_hits_dict)
+    
+    #Clean up leftover files
+    for xx in [query_file,BLAST_file,"clustal_temp.fasta","Blast_q_temp.fasta","Blast_s_temp.fasta"]:
+        if os.path.isfile(xx):
+            os.remove(xx)  #get rid of the temp files
+
+def import_data(input_file):
+    #read files into data structure, should be in output format from code above
+    with open(input_file, 'rU') as fileread:
+            lines = fileread.readlines()
+    imported_data = []
+    for line in lines:
+        if line.find('Target Accession#') == -1 and line != []:  #skip header lines
+            word_num = 0
+            converted_line = []
+            for word in line.strip().split('\t'):
+                if word_num in (2,3,4,5):    #These are the positions in the data (0 indexed) that should be integers
+                    converted_line.append(int(word))
+                else:
+                    converted_line.append(word)
+                word_num += 1
+            imported_data.append(converted_line)
+              
+    return imported_data
+
+def main(argv=None):
+    
+    current_dir = os.getcwd()+'/'
+    params = Params()     
+    try:
+        if argv is None:
+            argv = sys.argv
+            args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci = params.parse_options(argv)
+            params.check()
+        
+        if rerun_PHASTER:    #Used to rerun the PHASTER analysis
+            imported_data = import_data(spacer_rerun_file)
+            in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(imported_data,current_dir,in_islands_only=True,all_islands=False)
+            Export_results(in_island,not_in_island,unknown_islands)
+        elif rerun_loci:     #Used to rerun the loci annotating code near the spacers found
+            imported_data = import_data(spacer_rerun_file)
+            re_analyzed_data  = locus_re_annotator(imported_data)
+            output_results(re_analyzed_data,{},{},"Spacer_data_loci_re-analyzed.txt")   #Quickly re-generate the re-analyzed data.          
+        else:
+            #Identify genomes that contain self-targeting spacers     
+            protein_list = anti_CRISPR_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,ask)
+                   
+        if not skip_family_create:
+            #Cluster proteins found near the targeted spacer and look for those that 
+            anti_CRISPR_cluster_tool(protein_list,E_value_limit,families_limit,search,skip_family_search,skip_family_create,skip_alignment,current_dir)     
+            
+      
+    except Usage, err:
+        print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
+        print >> sys.stderr, ""
+        return 2
+
+if __name__ == "__main__":
+    sys.exit(main())
