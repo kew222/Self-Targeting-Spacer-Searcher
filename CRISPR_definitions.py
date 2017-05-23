@@ -119,40 +119,5 @@ Cas_proteins =  {
                 "CasE":["Type I-E"]
                                                                                                                                                                                                                                                                                                            
               }               
-                
-Cas_synonym_list = {
 
-                "Csa1":"Cas4",
-                "Csa4":"Cas8a",
-                "Csx9":"Cas8a",
-                "Csh1":"Cas8b1",
-                "Csd1":"Cas8c",
-                "Csp2":"Cas8c",
-                "GSU0054":"Cas5",
-                "Csc3":"Cas10d",
-                "Csc2":"Cas7",
-                "Csc1":"Cas5",
-                "Cse1":"Cas8e",
-                "Cse3":"Cas6",
-                "Cse4":"Cas7",
-                "CasB":"Cse2",
-                "CasC":"Cas7",
-                "CasD":"Cas5",
-                "CasE":"Cas6",
-                "Csy1":"Cas8f",
-                "Csy2":"Cas5",
-                "Csy3":"Cas7",
-                "Csy4":"Cas6f",
-                "Cst1":"Cas8a1",
-                "Cst2":"Cas7",
-                "Cst5t":"Cas5",
-                "Csn1":"Cas9",
-                #skipping the Csm/Cmr proteins, as it is helpful to see them as is
-                "Csf4":"dinG",
-                "Csf2":"Cas7",
-                "Csf3":"Cas5",
-                "C2c2":"Cas13"
-                
-                }                
-                
                 
