@@ -903,7 +903,7 @@ def get_loci(CRISPR_results,fastanames):
 
     return spacer_data,num_loci
 
-def spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,E_value_limit):
+def spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit):
 
     blast_results = []
     num = 0
@@ -935,7 +935,7 @@ def spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,E_va
             queryfilename = queryfilename.split(current_dir)[1]  #These lines are only for my local because of the Dropbox formatting problem
         if current_dir in subject:
             subject = subject.split(current_dir)[1]  #These lines are only for my local because of the Dropbox formatting problem
-        blast_cmd = "blastn -query {0} -subject {1} -outfmt 6 -evalue {2}".format(queryfilename,subject,E_value_limit)
+        blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt 6 -evalue {3}".format(bin_path,queryfilename,subject,E_value_limit)
         handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = handle.communicate()
         blast_results.append(output.split("\n"))
@@ -1289,7 +1289,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance):
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
-def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,repeats=4):   
+def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,bin_path,repeats=4):   
 
     #Determine whether the current contig (or genome) has already had it's locus checked
     global loci_checked
@@ -1367,7 +1367,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             i += 1
         if not os.path.exists('temp'):
             os.mkdir('temp')
-        clustal_cmd = "clustalo -i - --force --outfmt=clustal -o temp/align_temp_spacer_output.aln"        
+        clustal_cmd = "{0}clustalo -i - --force --outfmt=clustal -o temp/align_temp_spacer_output.aln".format(bin_path)      
         handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = handle.communicate(input=fasta_string)                        
         alignment = AlignIO.read("temp/align_temp_spacer_output.aln", "clustal")
@@ -1725,7 +1725,7 @@ def target_mutation_annotation(repeat_U, repeat_D):
 
     return repeat_mutations                            
 
-def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,repeats=4):
+def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,bin_path,repeats=4):
 
     #Next, search each genome sequence for each repeat sequence and determine if it shows up more than once (bypassed CRISPR)
     #Since the genomes, spacers, etc. are in the same order, look for the start lengths and filter out reads that were found from CRISPR search
@@ -1837,7 +1837,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                                                                     
                         if outside_loci:   #only keep alignments that don't match 
                             #Determine what the'PAM' sequence is after the non-locus alignment to report                                           
-                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,repeats)
+                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,bin_path,repeats)
                             if not false_positive:
                                blast_results_filtered_summary.append([Acc_num_self_target,  #Accession # of sequence with position of spacer target outside of array
                                                                       Acc_num,              #Accession # of sequence with position of spacer within array 
@@ -2016,7 +2016,7 @@ def label_self_target(target_protein,feature_num):
    
     return target_protein
 
-def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,Cas_gene_distance,ask=False):
+def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_dir,Cas_gene_distance,ask=False):
 
     if num_limit == 0:
         num_limit = default_limit        
@@ -2043,10 +2043,10 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
     spacer_data,num_loci = get_loci(CRISPR_results,fastanames)
 
     #Check to see which of the spacers appears in the genome outside of any indentified CRIPSR loci
-    blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,E_value_limit)
+    blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
 
     #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
-    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,repeats)
+    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,bin_path,repeats)
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
     output_results(blast_results_filtered_summary,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
@@ -2471,7 +2471,7 @@ def main(argv=None):
             output_results(re_analyzed_data,{},{},"Spacer_data_loci_re-analyzed.txt")   #Quickly re-generate the re-analyzed data.          
         else:
             #Identify genomes that contain self-targeting spacers     
-            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,Cas_gene_distance,ask)
+            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,ask)
         
         #Note that the following hasn't been upkept can may not be functional                      
         if not skip_family_create:
