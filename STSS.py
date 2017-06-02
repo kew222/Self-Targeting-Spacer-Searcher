@@ -20,7 +20,7 @@ import time
 import re
 import httplib
 from collections import Counter
-from CRISPR_definitions import Cas_proteins,CRISPR_types,Cas_synonym_list
+from CRISPR_definitions import Cas_proteins, CRISPR_types, Cas_synonym_list, Repeat_families_to_types, Expected_array_directions
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio import AlignIO
@@ -30,18 +30,16 @@ from Bio.Blast import NCBIWWW
 from urllib2 import HTTPError  # for Python 2
 Entrez.email = "watters@berkeley.edu"
 
-crt_path = "/Users/kylewatters/precompiled_binaries"
-#crt_path = "/Users/watters/precompiled_binaries"
-
-HMM_dir = "/Users/kylewatters/Desktop/HMMs"
+bin_path = "bin/"
+HMM_dir = "HMMs/"
 
 help_message = '''
-anti_CRISPR_miner.py searches for potential anti-CRISPR proteins from a supplied bacterial strain
+STSS.py searches for potential anti-CRISPR proteins from a supplied bacterial strain
 *Make sure to quote multiword terms*
 -Note that currently, can only analyze genomes from NCBI due to current limitations in PHASTER code
 
 Usage:
-   anti_CRISPR_miner.py [options] [--dir <directory> | --search <"NCBI search term"> ]
+   STSS.py [options] [--dir <directory> | --search <"NCBI search term"> ]
 
 Options
 -h, --help                      Opens help message
@@ -63,6 +61,8 @@ Options
 -s, --spacers <N>               Number of spacers needed to declare a CRISPR locus (default: 3)
 --pad-locus <N>                 Include a buffer around a potential locus to prevent missed repeats from
                                 appearing as hits (default: 100)
+-d, --Cas-gene-distance <N>     Window around an array to search for Cas proteins to determine CRISPR subtype
+                                (default: 20000 - input 0 to search whole genome) 
 --skip-PHASTER                  Skip PHASTER analysis (currently can't upload search files)                                
 -p, --rerun-PHASTER <filename>  Rerun PHASTER to recheck islands from provided Spacer search results file
 
@@ -75,7 +75,7 @@ Options
 loci_checked = {}
 
 def get_version():
-    return "0.0.2"
+    return "0.2.0"
 
 class Usage(Exception):
     def __init__(self,msg):
@@ -88,7 +88,7 @@ class Params:
     
     def parse_options(self, argv):
         try:
-            opts, args = getopt.getopt(argv[1:], "hvE:l:s:fp:cn",
+            opts, args = getopt.getopt(argv[1:], "hvE:l:s:fp:cnd:",
                                        ["limit=",
                                        "dir=",
                                        "search=",
@@ -104,6 +104,7 @@ class Params:
                                        "families-limit=",
                                        "cluster-search",
                                        "pad-locus=",
+                                       "Cas-gene-distance=",
                                        "no-ask",
                                        "force-redownload",
                                        "percent-reject=",
@@ -127,7 +128,7 @@ class Params:
         repeats = 4
         skip_family_search = False
         families_limit = 300
-        pad_locus = 40
+        pad_locus = 100
         skip_family_create = True
         complete_only = False
         skip_PHASTER = False
@@ -137,6 +138,7 @@ class Params:
         percent_reject = 25
         redownload = False
         ask = True
+        Cas_gene_distance = 20000
         
         for option, value in opts:
             if option in ("-v", "--version"):
@@ -170,8 +172,10 @@ class Params:
                 families_limit = int(value)   
             if option == "--pad-locus":
                 pad_locus = int(value) 
-            if option in ('c',"--cluster-search"):
+            if option in ('-c',"--cluster-search"):
                 skip_family_create = False 
+            if option in ('-d',"--Cas-gene-distance"):
+                Cas_gene_distance = int(value) 
             if option == "--complete-only":
                 complete_only = True   
             if option == "--skip-PHASTER":
@@ -200,7 +204,7 @@ class Params:
             print("Search and Accession# input are not compatible, please select one.\n") 
             raise Usage(help_message)    
                             
-        return args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci
+        return args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance
 
 def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
     
@@ -349,7 +353,7 @@ def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
     
     return assemblies          
 
-def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[]):
+def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],simple_return=True):
     
     #Because the number of links can exponentially grow from the genome links, split off and do in chunks
     assembly_chunk_size = 5
@@ -440,7 +444,10 @@ def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,
     found_WGS =  len(WGS_IDs) 
     total = found_complete + found_WGS                    
 
-    return found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes
+    if simple_return == True:
+        return complete_IDs + WGS_IDs
+    else:
+        return found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes
 
 def link_nucleotide_to_bioproject(nucleotide_list,bioprojects=[],num_limit=100000):
     attempt_num = 1
@@ -531,7 +538,7 @@ def search_NCBI_genomes(search,num_limit,complete_only):
     #Link genomes found to assemblies 
     assemblies = link_genome_to_assembly(genomes,num_limit,[])
     #Link assemblies found to nucleotide records  
-    found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[])
+    found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],simple_return=False)
 
     return found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes
 
@@ -562,7 +569,10 @@ def gather_assemblies_from_bioproject_IDs(bioprojectIDs,IDs=True,num_limit=10000
 def get_Accs(IDs):
     
     handle = Entrez.efetch(db='nuccore', rettype="acc", id=IDs)   #Get Acc#s of those found from search
-    Accs = [Id.strip() for Id in handle]            
+    Accs = []
+    for Id in handle:
+        if Id.strip() != "":
+            Accs.append(Id.strip())          
     handle.close()
 
     return Accs
@@ -780,7 +790,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
 
     return fastanames,Acc_convert_to_GI
 
-def spacer_scanner(fastanames,crt_path,repeats,current_dir):
+def spacer_scanner(fastanames,bin_path,repeats,current_dir):
 
     #Search each genome for CRISPR repeats
     print("Searching for CRISPR spacer-repeats...")
@@ -810,7 +820,7 @@ def spacer_scanner(fastanames,crt_path,repeats,current_dir):
                     break  
         if good_genome:     
             result_file = "CRISPR_analysis/" + fastaname.split(".")[0] + ".out"
-            CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -maxRL 45 -minRL 20 -minNR {1} -maxSL 45 -minSL 18 {2} {3}".format(crt_path,repeats,filein,result_file)
+            CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -maxRL 45 -minRL 20 -minNR {1} -maxSL 45 -minSL 18 {2} {3}".format(bin_path,repeats,filein,result_file)
             crispr_search = subprocess.Popen(CRISPR_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = crispr_search.communicate()
             if error != '':
@@ -1015,17 +1025,21 @@ def download_genbank(contig_Acc):
     record = SeqIO.read(genfile_name, 'genbank')
     return record    
     
-def find_Cas_proteins(align_pos,record,range_to_search=20000):
+def find_Cas_proteins(align_pos,record,Cas_gene_distance=20000):
     
     #Define the region to examine coding regions
-    upstream_pos = max(1,align_pos - range_to_search)
-    downstream_pos = min(align_pos + range_to_search, len(record.seq))
-    
+    if Cas_gene_distance == 0:
+        upstream_pos = 1
+        downstream_pos = len(record.seq)
+    else:
+        upstream_pos = max(1,align_pos - Cas_gene_distance)
+        downstream_pos = min(align_pos + Cas_gene_distance, len(record.seq))
+        
     #Search through the features and find those that fall within the range defined above
-    check_list = []; proteins_identified = []; types_list = []; pseudogenes = []
+    check_list = []; proteins_identified = []; types_list = []; pseudogenes = []; protein_name = ''; up_down = 0
     for feature in record.features:
         if upstream_pos <= feature.location.start <= downstream_pos:
-            #Search for the CRISPR proteins
+            #Search for the CRISPR proteins and keep track of whether they are before or after the array
             if feature.type == 'CDS':
                 qualifiers = feature.qualifiers
                 if 'pseudo' in qualifiers:
@@ -1035,7 +1049,7 @@ def find_Cas_proteins(align_pos,record,range_to_search=20000):
                 try:
                     protein_num = qualifiers["protein_id"][0]
                 except KeyError:  #No protein_id associated, such as a pseudo-gene
-                    protein_num = ''  #will skip over when 
+                    protein_num = ''  #will skip over when it occurs
                 try:
                     product = feature.qualifiers["product"][0]
                     #Now determine if this feature encodes a Cas protein
@@ -1043,12 +1057,16 @@ def find_Cas_proteins(align_pos,record,range_to_search=20000):
                         check_list.append(protein_num)
                     else:
                         #See if protein identified as Cas protein
-                        is_Cas,protein_name,types_list = is_known_Cas_protein(product,types_list)
+                        is_Cas, protein_name, types_list = is_known_Cas_protein(product,types_list)
                         if is_Cas:
                             if pseudogene:
                                 protein_name += " (pseudo)"
-                            if protein_name not in proteins_identified: 
+                            if protein_name not in proteins_identified and protein_name != '': 
                                 proteins_identified.append(protein_name)
+                                if feature.location.start < upstream_pos + Cas_gene_distance:  #if upstream of the array
+                                    up_down += 1
+                                else:
+                                    up_down -= 1
                         else:
                             if pseudogene:
                                 pseudogenes.append(protein_num)  #keep track of the pseudogenes found before homology search, since order can be lost to utilize batch processing on NCBI CD server
@@ -1064,10 +1082,14 @@ def find_Cas_proteins(align_pos,record,range_to_search=20000):
             if is_Cas:
                 if short_name.split('\t')[0] in pseudogenes:
                     protein_name += " (pseudo)"
-            if protein_name not in proteins_identified: 
+            if protein_name not in proteins_identified and protein_name != '': 
                 proteins_identified.append(protein_name)        
-            
-    return proteins_identified,types_list
+                if feature.location.start < upstream_pos + Cas_gene_distance:  #if upstream of the array
+                    up_down += 1
+                else:
+                    up_down -= 1      
+                                                    
+    return proteins_identified,types_list,up_down
 
 def Type_check(types_list):
     
@@ -1116,13 +1138,16 @@ def locus_completeness_check(Type,proteins_identified):
         if Cas_search == ["Proteins missing: "]: #If nothing was added the locus is complete
             Cas_search = ["Complete"]
     elif Type.find("?") > -1:  #don't check if more than three (when there will only be a ?)
+        if proteins_identified == []:
+            Cas_search = ["N/A"]   
+        #Since Type is unknown, give a generic output
+        else:
+            Cas_search = ["Undetermined"]
         #List out the proteins that were identified, but need to cross reference to prevent doubles
-        Cas_search = ["Cas proteins found: "]
-        for Cas, types in Cas_proteins.iteritems():
-            if Cas in proteins_identified and Cas not in Cas_search:
-                Cas_search.append(Cas)
-        if Cas_search == ["Cas proteins found: "]:
-            Cas_search = ["N/A"]                                        
+        #for Cas, types in Cas_proteins.iteritems():
+        #    if Cas in proteins_identified and Cas not in Cas_search:
+        #        Cas_search.append(Cas)
+                                     
     else:    #If only a question mark (i.e., too many potential (or no) CRISPR loci to tell)
         Cas_search = ["N/A"]
     
@@ -1155,10 +1180,43 @@ def find_spacer_target(Acc_num_target,alt_alignment):
     
     return self_targets               
     
-def Locus_annotator(align_locus,record):                   
+def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc):                   
    
-    #Find Cas proteins near the spacer-repeat region
-    proteins_identified,types_list = find_Cas_proteins(align_locus,record)
+    #If Cas_gene_distance is 0, this is a special case where all of the genbank sequences are to be checked in full for any Cas genes
+    if Cas_gene_distance == 0:
+        #will need to determine what all of the genbank files are, download them and search all of them for Cas genes
+        
+        #First, look up the assembly that the locus containing contig is in
+        print(contig_Acc)
+        genomes = NCBI_search(contig_Acc,"nucleotide",num_limit=100000,tag="",exclude_term="")
+        print(genomes)
+        assemblies=[]
+        print(assemblies)
+        assemblies = link_nucleotide_to_assembly(genomes,assemblies,num_limit=100000) 
+        print(assemblies)
+        contig_GIs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[])
+        print(contig_GIs)
+        genome_Accs = get_Accs(contig_GIs[0])
+        print(genome_Accs)
+        
+        all_proteins_identified = []; all_types_list = []; total_up_down = 0
+        for genome_Acc in genome_Accs:
+            contig_filename = genome_Acc.split(".")[0] + ".gb"
+            if os.path.isfile("GenBank_files/{0}.gb".format(contig_filename)):
+                record = SeqIO.read(contig_filename, 'genbank')
+            else:
+                record = download_genbank(genome_Acc)
+            print("Checking {0} contig for Cas proteins...".format(genome_Acc))
+            proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,Cas_gene_distance)
+            all_proteins_identified += proteins_identified
+            all_types_list += types_list
+            total_up_down += up_down
+        proteins_identified = all_proteins_identified
+        types_list = all_types_list
+        up_down = total_up_down
+    else:
+        #Find Cas proteins near the spacer-repeat region
+        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,Cas_gene_distance)
     
     #Determine what Type the locus is
     Type = Type_check(types_list)
@@ -1204,9 +1262,9 @@ def Locus_annotator(align_locus,record):
         if "Csn2" not in Cas_search and 'Cas4' not in Cas_search:
             Type = "Presumed Type II-C"
     
-    return Type,Cas_search,renamed_proteins_identified                            
+    return Type,Cas_search,renamed_proteins_identified,types_list,up_down                            
  
-def locus_re_annotator(imported_data):
+def locus_re_annotator(imported_data,Cas_gene_distance):
     
     print("Note! Genbank files are going to be downloaded. Remove them after if unwanted.")
     re_analyzed_data = []
@@ -1219,7 +1277,7 @@ def locus_re_annotator(imported_data):
             record = SeqIO.read(contig_filename, 'genbank')
         else:
             record = download_genbank(contig_Acc)
-        Type,Cas_search,proteins_identified = Locus_annotator(align_locus,record)
+        Type,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc)
         #Convert the Cas protein search results into a printable string       
         if len(Cas_search) > 1:
             proteins = "".join(Cas_search[:2])
@@ -1231,7 +1289,7 @@ def locus_re_annotator(imported_data):
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
-def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,repeats=4):   
+def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,repeats=4):   
 
     #Determine whether the current contig (or genome) has already had it's locus checked
     global loci_checked
@@ -1247,7 +1305,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
     print("Analyzing self-targeting spacer found in {0}...".format(Acc_num_self_target))
     false_positive = False
     try:
-        species,Type_proteins,Type_repeat,proteins_identified,Cas_search,false_positive = loci_checked[contig_Acc + "-" + str(crispr)] 
+        species,Type_proteins,Type_repeat,proteins_identified,Cas_search,array_direction,false_positive = loci_checked[contig_Acc + "-" + str(crispr)] 
         need_locus_info = False  
     except KeyError:    #Hasn't been made yet or not found
         need_locus_info = True    #Need to determine the information and add to the dictionary
@@ -1271,14 +1329,13 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 #if genome_type == 'complete':
                 #    species += record.features[0].qualifiers["strain"][0]
             
-            Type_proteins,Cas_search,proteins_identified = Locus_annotator(align_locus,record) 
+            Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc) 
             
             loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,proteins_identified,Cas_search]   
  
         #Going to figure out what the consensus repeat is and if there are mutations in it.
         consensus_repeat = "Skipped"
         repeat_mutations = "Skipped"
-        array_direction = "CRT assumed Forward, unconfirmed"
         
         #First determine the consensus repeat
         #Open the CRISPR results file and collect all of the repeat and spacer sequences
@@ -1381,7 +1438,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 align_locus = align_locus + move_F_len
                 alt_alignment = alt_alignment + move_F_len
                 
-    
             #Perform a multiple sequence alignment to get the consensus repeat using dummy alignment from biopython
             #Build a fasta format
             i = 1; fasta_string = ''
@@ -1417,14 +1473,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 else:
                     repeat_U = repeat_temp
                 downstream = True
-            if repeat_D == '' and repeat_U == '':
-                repeat_mutations = 'None'
-            elif repeat_D == '' and repeat_U != '':
-                repeat_mutations = 'Upstream repeat mutated: {0}'.format(repeat_U)
-            elif repeat_D != '' and repeat_U == '':
-                repeat_mutations = 'Downstream repeat mutated: {0}'.format(repeat_D)
-            else:             
-                repeat_mutations = 'Both repeats mutated. Upstream: {0}, Downstream: {1}'.format(repeat_U,repeat_D)
+            repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
             
             #Take the spacer sequence and realign to the target to find what part of the sequence is perfectly aligned to establish a register
             query_file = "temp/temp_query.txt"
@@ -1498,42 +1547,120 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         if error != "":
             print(error)
             sys.exit()        
-        
-        print(output)
-        
         #Parse the output to find the direction of the alignment (if there was one)
-        repeat_group = "Not found"; repeat_direction = 0
-        expression1 = re.compile("No hits detected")  
-        expression2 = re.compile("/s+E-value/s+score/s+bias")   #find the table labels for the data
-        for line in output:
-            a = expression1.search(line)
-            b = expression2.search(line)
-            if a is not None:
-                repeat_group = "Repeat not recognized"
+        Type_repeat = "Repeat not recognized"; repeat_direction = 0
+        expression1 = re.compile("\s+E-value\s+score\s+bias")   #find the table labels for the data
+        for line in output.split('\n'):
+            a = re.search(expression1, line)
+            if a is not None: 
+                data_string = output.split('\n')[output.split('\n').index(line) + 2]  #Get the data from two lines below
+                print(data_string)
+                if data_string == "": #No hits found
+                    break
+                repeat_group = data_string.strip().split()[3]  #The repeat group is the 4th position
+                repeat_direction = int(data_string.strip().split()[4]) - int(data_string.strip().split()[5]) 
+                #Use the identified group to guess at the Type
+                if repeat_group[-1] == 'R':  #Removes the R designation that was added to indicate where the original REPEATS data was backward
+                    repeat_group = repeat_group[:-1]
+                possible_types = Repeat_families_to_types[repeat_group]
+                if len(possible_types) == 1:
+                    Type_repeat = "Type {0}".format(possible_types[0])
+                elif len(possible_types) == 2:
+                    Type_repeat = "Type {0} or {1}".format(possible_types[0],possible_types[1])
+                elif len(possible_types) > 2:
+                    Type_repeat = "Type" + "".join([" {0},".format(string) for string in possible_types[:-1]]) + " or {0}".format(possible_types[-1])
+                Type_repeat += " (group {0})".format(repeat_group)
                 break
-            if b is not None: 
-                data_string = output[output.index(line) + 2]
-                repeat_group = data_string.strip().split()[3]
-                repeat_direction = int(data_string.strip().split()[4]) - int(data_string.strip().split()[5])
         
-        
-        
-        Type_repeat = repeat_group + ' ' + str(repeat_direction)   
-                                                                     
-        
-        
-        
-        
-        
+        #Here, we'll double check the direction of the array, and flip the spacer/repeat/PAM sequences if in reverse
+        #First, determine the array direction based on the Cas gene places
+        if repeat_direction == 0 and need_locus_info:
+            array_direction = "CRT assumed forward, orientation unknown"; extra_details = "no predictions"
+            #Check to see where the Cas proteins are relative to the array and where they are expected based on the predicted type (prefer Cas protein annotation)
+            #First figure out if either Type picks a single Type
+            if Type_proteins == "?" and Type_repeat != "Repeat not recognized":
+                types_to_use = possible_types
+                extra_details = "repeat sequence"
+            elif "or" in Type_proteins and "or" not in Type_repeat and "?" not in Type_repeat and "Repeat not recognized" not in Type_repeat:   
+                #Only one type determined by repeats, but multiple from proteins
+                types_to_use = possible_types
+                extra_details = "repeat sequence"
+            elif "or" in Type_proteins and "or" in Type_repeat:   
+                #Both predict multiple possible types, default to those predicted by the proteins
+                #extract the types predicted in Type_proteins
+                extra_details = "Cas proteins"
+            else:    #1 or more types predicted by the proteins 
+                extra_details = "Cas proteins"
+            if extra_details == "Cas proteins":
+                if Type_proteins == "?":
+                    #determine if too many types or none to make a call
+                    print(types_list)
+                    if types_list == []:
+                        extra_details = "no predictions"  #Reset to default, since there is no way to predict a Cas type
+                    else:
+                        #collapse the list of possible types
+                        types_to_use = [x.split()[1] for x in list(set(types_list))]  #remove the word 'Type'
+                else:
+                    types_to_use = []
+                    for string in Type_proteins.split():
+                        if "-" in string:
+                            if string[-1] in (",", "?"):
+                                types_to_use.append(string[:-1])
+                            else:
+                                types_to_use.append(string)
+            if extra_details != "no predictions":
+                #Now Check the possible types to see what the direction is (Note! presumed Type II-C will come out as backward)
+                directions_predicted = []
+                for dir_check in types_to_use:
+                    directions_predicted.append(Expected_array_directions["Type {0}".format(dir_check)])
+                #Confirm they are all in the same direction
+                expected_direction = directions_predicted[0]
+                for el in directions_predicted:
+                    if el != expected_direction:
+                        #disagreement, reset to unknown direction
+                        expected_direction = 0
+                        array_direction = "Predicted Types have conflicting orientations"
+                        break
+                #Now determine if the array orientation matches the expected orientation        
+                if up_down > 0:  #if the Cas genes precede the array
+                    up_down = 1
+                elif up_down < 0:
+                    up_down = -1
+                if expected_direction != 0:
+                    if up_down == expected_direction:
+                        repeat_direction = 1   #already in correct orientation
+                        array_direction = "CRT orientation correct (determined with {0})".format(extra_details)
+                    else:
+                        repeat_direction = -1  #needs to be flipped
+                        array_direction = "CRT orientation wrong (sequences reversed, determined with {0})".format(extra_details)
+        else:
+            extra_details = "repeat sequence"
+            if repeat_direction > 0:
+                array_direction = "CRT orientation correct (determined with {0})".format(extra_details)
+            elif repeat_direction < 0:
+                array_direction = "CRT orientation wrong (sequences reversed, determined with {0})".format(extra_details)
+        #If there is a consensus direction, and it's backward, flip the array
+        if repeat_direction == -1:
+            #Need to flip spacer sequence, PAM sequences, consensus Repeat
+            PAM_seq_up = str(Seq(PAM_seq_up).reverse_complement())                
+            PAM_seq_down = str(Seq(PAM_seq_down).reverse_complement())    
+            consensus_repeat = str(Seq(consensus_repeat).reverse_complement())                
+            spacer_seq = str(Seq(spacer_seq).reverse_complement())                
+            
+            #Also need to flip the orientation of the mutation annotations (for the repeats and target sequence)
+            if target_sequence != "Perfect match":
+                target_sequence = flip_mismatch_notation(target_sequence)        
+            if repeat_mutations != "None":
+                if repeat_U != "":
+                    repeat_U = flip_mismatch_notation(repeat_U)
+                if repeat_D != "":
+                    repeat_D = flip_mismatch_notation(repeat_D)                
+            repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
+            
         #if the validity of the locus hasn't been determined yet, include the information
         if len(loci_checked[contig_Acc + "-" + str(crispr)]) < 5:
-           loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,Type_repeat,proteins_identified,Cas_search,false_positive]
+           loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,Type_repeat,proteins_identified,Cas_search,array_direction,false_positive]
         
-               
-                      
-                             
-                                    
-                                                  
         #Now search the genbank files to see what the self-targeting gene is and look up if hypothetical
         self_targets = find_spacer_target(Acc_num_self_target,alt_alignment)
                                                                                                 
@@ -1546,9 +1673,9 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             self_target = 'No features in DNA'
         else:
             self_target = ''
-            for listx in self_target:
-                self_target = self_target + ", ".join(self_targets[0]) + " & "
-            self_target = self_target[:-3]       #remove any trailing ampersands                    
+            #for listx in self_target:
+            #    self_target = self_target + ", ".join(self_targets[0]) + " & "
+            #self_target = self_target[:-3]       #remove any trailing ampersands                    
         
         #Convert the Cas protein search results (and Cas genes found) into a printable string       
         if len(Cas_search) > 1:
@@ -1563,13 +1690,42 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             proteins_found = proteins_identified[0]
         else:
             proteins_found = 'None'
-        #Check the     
-        
-        
-        
+
         return PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive
 
-def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,repeats=4):
+def flip_mismatch_notation(sequence):
+    
+    temp1 = sequence.reverse()
+    temp2 = ''
+    for base in temp1:
+        if base == 'a':
+            temp2 += 't'
+        elif base == 't':
+            temp2 += 'a'
+        elif base == 'c':
+            temp2 += 'g'                    
+        elif base == 'g':
+            temp2 += 'c'            
+        else:
+            temp2 += base
+    sequence = temp2   
+    
+    return sequence             
+
+def target_mutation_annotation(repeat_U, repeat_D):
+
+    if repeat_D == '' and repeat_U == '':
+        repeat_mutations = 'None'
+    elif repeat_D == '' and repeat_U != '':
+        repeat_mutations = 'Upstream repeat mutated: {0}'.format(repeat_U)
+    elif repeat_D != '' and repeat_U == '':
+        repeat_mutations = 'Downstream repeat mutated: {0}'.format(repeat_D)
+    else:             
+        repeat_mutations = 'Both repeats mutated: Upstream: {0}, Downstream: {1}'.format(repeat_U,repeat_D)
+
+    return repeat_mutations                            
+
+def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,repeats=4):
 
     #Next, search each genome sequence for each repeat sequence and determine if it shows up more than once (bypassed CRISPR)
     #Since the genomes, spacers, etc. are in the same order, look for the start lengths and filter out reads that were found from CRISPR search
@@ -1681,7 +1837,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                                                                     
                         if outside_loci:   #only keep alignments that don't match 
                             #Determine what the'PAM' sequence is after the non-locus alignment to report                                           
-                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,repeats)
+                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,repeats)
                             if not false_positive:
                                blast_results_filtered_summary.append([Acc_num_self_target,  #Accession # of sequence with position of spacer target outside of array
                                                                       Acc_num,              #Accession # of sequence with position of spacer within array 
@@ -1730,7 +1886,7 @@ def Export_results(in_island,not_in_island,unknown_islands,contig_Accs={},fastan
 def output_results(results,replacement_dict,fastanames,filename):
     #Export results to a separate file 
     with open(filename,"w") as bfile:
-        bfile.write("Target Accession#\tLocus Accession#\tSpecies\tPredicted Type from Cas proteins\t Predicted Type from repeats\tLocus Completeness\tCas Genes Identified\tCRISPR #\tSpacer #\tSpacer Target Pos.\tSpacer Locus Pos.\tSpacer Sequence\tPAM Region (Upstream)\tTarget Sequence\tPAM Region (Downstream)\tConsensus Repeat\tRepeat Mutations\tArray Direction\tSelf-Target(s)\tPHASTER Island #\n") 
+        bfile.write("Target Accession#\tLocus Accession#\tSpecies/Strain\tPredicted Type from Cas proteins\tPredicted Type from repeats\tLocus Completeness\tCas Genes Identified\tCRISPR #\tSpacer #\tSpacer Target Pos.\tSpacer Locus Pos.\tSpacer Sequence\tPAM Region (Upstream)\tTarget Sequence\tPAM Region (Downstream)\tConsensus Repeat\tRepeat Mutations\tArray Direction\tSelf-Target(s)\tPHASTER Island #\n") 
         if results != []:
             for line in results:
                 if replacement_dict != {} and fastanames != {}:
@@ -1860,7 +2016,7 @@ def label_self_target(target_protein,feature_num):
    
     return target_protein
 
-def anti_CRISPR_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,ask=False):
+def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,Cas_gene_distance,ask=False):
 
     if num_limit == 0:
         num_limit = default_limit        
@@ -1881,7 +2037,7 @@ def anti_CRISPR_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
         fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask)
 
     #Search each genome for CRIPSR repeat-spacers
-    CRISPR_results = spacer_scanner(fastanames,crt_path,repeats,current_dir)
+    CRISPR_results = spacer_scanner(fastanames,bin_path,repeats,current_dir)
     
     #BLAST each spacer sequence against the genome
     spacer_data,num_loci = get_loci(CRISPR_results,fastanames)
@@ -1890,7 +2046,7 @@ def anti_CRISPR_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,E_value_limit)
 
     #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
-    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,repeats)
+    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,repeats)
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
     output_results(blast_results_filtered_summary,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
@@ -2303,7 +2459,7 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance = params.parse_options(argv)
         
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
@@ -2311,11 +2467,11 @@ def main(argv=None):
             Export_results(in_island,not_in_island,unknown_islands)
         elif rerun_loci:     #Used to rerun the loci annotating code near the spacers found
             imported_data = import_data(spacer_rerun_file)
-            re_analyzed_data  = locus_re_annotator(imported_data)
+            re_analyzed_data  = locus_re_annotator(imported_data,Cas_gene_distance)
             output_results(re_analyzed_data,{},{},"Spacer_data_loci_re-analyzed.txt")   #Quickly re-generate the re-analyzed data.          
         else:
             #Identify genomes that contain self-targeting spacers     
-            protein_list = anti_CRISPR_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,ask)
+            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,Cas_gene_distance,ask)
         
         #Note that the following hasn't been upkept can may not be functional                      
         if not skip_family_create:

@@ -41,8 +41,9 @@ CRISPR_types = {
                 "Type V-B":[["C2c1"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
                 "Type V-C":[["Cas1"],["C2c3"]],
                 
-                "Type VI-A":[["C2c2"],["Cas1"],["Cas2"]]
-                
+                "Type VI-A":[["Cas13a1","C2c2"],["Cas1"],["Cas2"]],
+                "Type VI-B":[["Cas13b","C2c2"],["Csx27"],["Csx28"],["Cas1"],["Cas2"]],
+                "Type VI-C":[["Cas13a2","C2c2"],["Cas1"],["Cas2"]]
                 }
                 
                 
@@ -92,7 +93,10 @@ Cas_proteins =  {
                 "Cpf1":["Type V-A"],
                 "C2c1":["Type V-B"],
                 "C2c3":["Type V-B"],
-                "C2c2":["Type VI-A"],
+                "C2c2":["Type VI-A", "Type VI-B","Type VI-C"],
+                "Cas13a1":["Type VI-A"],
+                "Cas13b":["Type VI-B"],
+                "Cas13a2":["Type VI-C"],
                 "Cas1":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G","Type II-A","Type II-B","Type II-C","Type III-A","Type III-B","Type V-A","Type V-B","Type V-C","Type VI-A"],
                 "Cas2":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G","Type II-A","Type II-B","Type II-C","Type III-A","Type III-B","Type V-A","Type V-B","Type VI-A"],
                 "Cas3":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G"],                    
@@ -154,5 +158,82 @@ Cas_synonym_list = {
                 "C2c2":"Cas13"
                 
                 }                
-                
-                
+
+#According to  Lange, et al. NAR, 2013: "CRISPRmap: an automated classification of repeat con- servation in prokaryotic adaptive immune systems" 
+Repeat_families_to_types = {                
+                                "F1": ["I-B", "III-A", "III-B"],
+                                "F2": ["I-E"],
+                                "F3": ["I-C"], 
+                                "F4": ["I-C", "I-E", "II-B"],
+                                "F5": ["I-F"], 
+                                "F6": ["I-A"], 
+                                "F7": ["I-A"], 
+                                "F8": ["I-F"], 
+                                "F9": ["III-B"], 
+                                "F10": ["I-B", "III-B"], 
+                                "F11": ["III-B"], 
+                                "F12": ["II-B", "III-A"], 
+                                "F13": ["I-A", "III-B"], 
+                                "F14": ["I-A", "I-D", "III-A"],
+                                "F15": ["I-A", "III-B"], 
+                                "F16": ["III-A"], 
+                                "F17": ["?"], 
+                                "F18": ["I-E", "II-B"], 
+                                "F19": ["?"], 
+                                "F20": ["I-B"], 
+                                "F21": ["I-E"], 
+                                "F22": ["I-E"], 
+                                "F23": ["I-D", "II-B"], 
+                                "F24": ["III-A", "III-B"], 
+                                "F25": ["I-A", "II-B", "III-A"],
+                                "F26": ["?"], 
+                                "F27": ["II-A", "II-B"], 
+                                "F28": ["I-A"], 
+                                "F29": ["III-A"], 
+                                "F30": ["?"], 
+                                "F31": ["III-A"], 
+                                "F32": ["I-C"], 
+                                "F33": ["I-C", "I-E", "II-B"],
+                                "F34": ["II-B"], 
+                                "F35": ["II-A"], 
+                                "F36": ["?"], 
+                                "F37": ["I-C", "III-B"], 
+                                "F38": ["I-A", "III-B"], 
+                                "F39": ["I-A", "I-B", "II-B"],
+                                "F40": ["I-B"]        
+                            }         
+                             
+#Here, 1 means the Cas genes are expected to be upstream, while -1 is downstream (to be consistent with up_down), 0 means it is common to see both orientations                                                                                
+Expected_array_directions = {
+                                "Type I-A":1,
+                                "Type I-B":1,
+                                "Type I-C":1,
+                                "Type I-U":1,
+                                "Type I-D":1,
+                                "Type I-E":1,
+                                "Type I-F":1,
+                                "Type I-G":1,
+                                
+                                "Type II-A":1,
+                                "Type II-B":-1,
+                                "Type II-C":-1,
+                                
+                                "Type III-A":1,
+                                "Type III-B":1,
+                                "Type III-C":1,
+                                "Type III-D":1,
+                                
+                                "Type IV-A":1,
+                                
+                                "Type V-A":1,
+                                "Type V-B":1,
+                                "Type V-C":1,
+                                
+                                "Type VI-A":1,
+                                "Type VI-B":1,
+                                "Type VI-C":1
+                                
+                            }
+                            
+                                                        
+                        
