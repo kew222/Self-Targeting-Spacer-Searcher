@@ -802,7 +802,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     CRISPR_results = []    #list of files with CRISPR loci search results
     genomes_searched = []
     bad_genomes = []
-    Ns = "N"*300
+    Ns = "N"*500
     for fastaname, holder in fastanames.iteritems():
         print(fastaname)
         good_genome = True
@@ -818,11 +818,31 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
             print('No genomic data in {0}. Skipping...'.format(fastaname))
             good_genome = False
         else:
+            line_no = 0; abs_pos = 0; affected_lines = []
             for line in lines:
                 if Ns in line:
-                    print('Long string of Ns in {0}. Will confound CRISPR array analysis. Skipping...'.format(fastaname))
-                    good_genome = False  
-                    break  
+                    if affected_lines == []:
+                        print('Long string of Ns in {0}. Modifying fasta file. Positions will be adjusted, do not rerun with modified file...'.format(fastaname))
+                    pos_adjust = 0
+                    Ns_position1 = line.find(Ns)
+                    line_temp = line
+                    while True:
+                    #Find where the Ns are, and replace them with 100 Ns and note that the positions have been altered by 300, then repeat and look for again
+                        Ns_position = line_temp.find(Ns)
+                        if Ns_position > -1:
+                            line_temp = line_temp[:Ns_position] + line_temp[Ns_position+200:]
+                            pos_adjust += 300
+                            print(line_temp[Ns_position-1000:Ns_position+1000])
+                        else:
+                            break
+                            #good_genome = False
+                    lines[line_no] = line_temp
+                    affected_lines.append([abs_pos+Ns_position1,pos_adjust])  #will store where the replacements are occuring  
+                    with open(filein, 'w') as file1:
+                        for a in lines:
+                            file1.write(a) 
+                abs_pos += len(line)
+
         if good_genome:     
             result_file = "CRISPR_analysis/" + fastaname.split(".")[0] + ".out"
             CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -maxRL 45 -minRL 20 -minNR {1} -maxSL 45 -minSL 18 {2} {3}".format(bin_path,repeats,filein,result_file)
@@ -856,9 +876,9 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     
     print("Finished searching for CRISPR spacer-repeats.")
 
-    return CRISPR_results
+    return CRISPR_results, affected_lines
 
-def get_loci(CRISPR_results,fastanames):
+def get_loci(CRISPR_results,fastanames,affected_lines=[]):
 
     #Data is stored at the uppermost level as each genome
     #Next level is the Acc # (0 index) and a list containing the CRISPR # and 2 member lists of the spacer sequences and their positions
@@ -897,6 +917,16 @@ def get_loci(CRISPR_results,fastanames):
                         curr_spacer = lines[locus+2+spacer_counter].split("\t")[3]
                         if curr_spacer != '\n':
                             curr_spacer_pos = int(lines[locus+2+spacer_counter].split("\t")[0]) + int(lines[locus+2+spacer_counter].split("\t")[4].split(" ")[1][:-1])
+                            #Need to potentially adjust the current spacer position because of long strings of Ns in the genome
+                            if affected_lines != []: 
+                                #Need to add the number of Ns removed upstream of the spacer position to its position value
+                                adjust_val = 0
+                                for line in affected_lines:
+                                    if line[0] < curr_spacer_pos:
+                                        adjust_val += line[1]    
+                                    else:
+                                        break
+                                curr_spacer_pos += adjust_val
                             spacer_data[genome_counter][CRISPR_counter].append([curr_spacer])
                             spacer_data[genome_counter][CRISPR_counter][spacer_counter].append(curr_spacer_pos)
                             spacer_counter += 1
@@ -1515,6 +1545,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate()
      
+            print(output)
             #Now look up what part of the spacer aligns, and extend the alignment in both directions
             #Because CRISPR alignment will not allow for indels, assume that stuck in register of best alignment
             #In reality, one end or the other of the spacer will be more important, but the best alignment is not in the same register as the PAM/seed region, it probably can't bind anyway
@@ -1533,24 +1564,46 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                     s_upper = int(line.split()[3]) + ext_upper
                     break
             #Take the gapless alignment and get the full subject subsequence
-            subject_subseq = target_subseq[s_lower:s_upper]
-            
+            if s_lower < 0 and s_upper > len(target_subseq):
+                subject_subseq = target_subseq[0:len(target_subseq)]
+            elif s_lower < 0:
+                subject_subseq = target_subseq[0:s_upper]
+            elif s_upper > len(target_subseq):
+                subject_subseq = target_subseq[s_lower:len(target_subseq)]
+            else:
+                subject_subseq = target_subseq[s_lower:s_upper]
             print(spacer_seq)
-            print(subject_subseq)
+            print(subject_subseq, "bananas")
             
             #Then stepwise compare the strings for mismatches (check not perfect match first)
             letter_pos = 0; target_sequence = ''
             if subject_subseq == spacer_seq:
                 target_sequence = 'Perfect match'
             else:
-                for q_letter in spacer_seq.lower():
-                    s_letter = subject_subseq[letter_pos].lower()
-                    if q_letter != s_letter:
-                        target_sequence += s_letter
-                    else:
-                        target_sequence += '.'
-                    letter_pos += 1
-                
+                if len(spacer_seq) == len(subject_subseq):  #Check they are the same length, if not, on the edge of a contig
+                    for q_letter in spacer_seq.lower():
+                        s_letter = subject_subseq[letter_pos].lower()
+                        if q_letter != s_letter:
+                            target_sequence += s_letter
+                        else:
+                            target_sequence += '.'
+                        letter_pos += 1
+                else: 
+                    fast_forward = 0
+                    while s_lower < 0:
+                        target_sequence += 'x'
+                        s_lower += 1; fast_forward += 1
+                    for q_letter in spacer_seq[fast_forward:].lower():
+                        try:
+                            s_letter = subject_subseq[letter_pos].lower()
+                            if q_letter != s_letter:
+                                target_sequence += s_letter
+                            else:
+                                target_sequence += '.'
+                        except IndexError:
+                            #will occur if the edge of the contig is on the 3' side
+                            target_sequence += 'x'
+                        letter_pos += 1
             #Now get the correct PAM sequences from the adjusted subject target sequence 
             PAM_seq_up = target_subseq[s_lower-9:s_lower]
             PAM_seq_down = target_subseq[s_upper:s_upper+9]
@@ -2085,10 +2138,10 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
         fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask)
 
     #Search each genome for CRIPSR repeat-spacers
-    CRISPR_results = spacer_scanner(fastanames,bin_path,repeats,current_dir)
+    CRISPR_results, affected_lines = spacer_scanner(fastanames,bin_path,repeats,current_dir)
     
     #BLAST each spacer sequence against the genome
-    spacer_data,num_loci = get_loci(CRISPR_results,fastanames)
+    spacer_data,num_loci = get_loci(CRISPR_results,fastanames, affected_lines)
 
     #Check to see which of the spacers appears in the genome outside of any indentified CRIPSR loci
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
