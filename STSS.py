@@ -30,7 +30,7 @@ from Bio.Blast import NCBIWWW
 from urllib2 import HTTPError  # for Python 2
 Entrez.email = "watters@berkeley.edu"
 
-bin_path = "bin/"
+bin_path = os.path.dirname(os.path.realpath(__file__)) + "/bin/"
 HMM_dir = "HMMs/"
 
 help_message = '''
@@ -50,6 +50,7 @@ Options
 -f, --force-redownload          Forces redownloading of genomes that were already downloaded
 -n, --no-ask                    Force downloading of genomes regardless of number found (default: ask)
 -l, --limit <N>                 Limit Entrez search to the first N results found (default: 1000)
+--CDD                           Use the Conserved Domain Database to identify Cas proteins (default is to use HMMs)
 --complete-only                 Only return complete genomes from NCBI
 --rerun-loci <filename>         Rerun the locus annotater to recheck the nearby locus for Type and completeness from provided sapcer search results file                   
 -E, --E-value  <N>              Upper limit of E-value to accept BLAST results as protein family (default: 1e-4)
@@ -112,6 +113,7 @@ class Params:
                                        "skip-PHASTER",
                                        "rerun-PHASTER=",
                                        "align-families",
+                                       "CDD",
                                        "version"])
         
         except getopt.error, msg:
@@ -138,6 +140,7 @@ class Params:
         percent_reject = 25
         redownload = False
         ask = True
+        CDD = False
         Cas_gene_distance = 20000
         
         for option, value in opts:
@@ -172,6 +175,8 @@ class Params:
                 families_limit = int(value)   
             if option == "--pad-locus":
                 pad_locus = int(value) 
+            if option == "--CDD":
+                CDD = True
             if option in ('-c',"--cluster-search"):
                 skip_family_create = False 
             if option in ('-d',"--Cas-gene-distance"):
@@ -204,7 +209,7 @@ class Params:
             print("Search and Accession# input are not compatible, please select one.\n") 
             raise Usage(help_message)    
                             
-        return args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance
+        return args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,CDD
 
 def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
     
@@ -1025,7 +1030,7 @@ def download_genbank(contig_Acc):
     record = SeqIO.read(genfile_name, 'genbank')
     return record    
     
-def find_Cas_proteins(align_pos,record,Cas_gene_distance=20000):
+def find_Cas_proteins(align_pos,record,HMM_dir,CDD=False,Cas_gene_distance=20000):
     
     #Define the region to examine coding regions
     if Cas_gene_distance == 0:
@@ -1036,7 +1041,7 @@ def find_Cas_proteins(align_pos,record,Cas_gene_distance=20000):
         downstream_pos = min(align_pos + Cas_gene_distance, len(record.seq))
         
     #Search through the features and find those that fall within the range defined above
-    check_list = []; proteins_identified = []; types_list = []; pseudogenes = []; protein_name = ''; up_down = 0
+    check_list = []; check_aa = []; proteins_identified = []; types_list = []; pseudogenes = []; protein_name = ''; up_down = 0
     for feature in record.features:
         if upstream_pos <= feature.location.start <= downstream_pos:
             #Search for the CRISPR proteins and keep track of whether they are before or after the array
@@ -1049,12 +1054,19 @@ def find_Cas_proteins(align_pos,record,Cas_gene_distance=20000):
                 try:
                     protein_num = qualifiers["protein_id"][0]
                 except KeyError:  #No protein_id associated, such as a pseudo-gene
-                    protein_num = ''  #will skip over when it occurs
+                    try:
+                        protein_num = qualifiers["locus_tag"][0]
+                    except KeyError:
+                        protein_num = 'UNKNOWN'  #will skip over if no tag at all, but should not occur (placeholder for fasta files)
                 try:
                     product = feature.qualifiers["product"][0]
                     #Now determine if this feature encodes a Cas protein
                     if product == 'hypothetical protein':   #Add all hypothetical proteins by default
-                        check_list.append(protein_num)
+                        if CDD:
+                            check_list.append(protein_num)
+                        else:
+                            check_list.append(protein_num)
+                            check_aa.append(str(feature.extract(record).seq.translate(to_stop=True)))  #Add the protein sequence
                     else:
                         #See if protein identified as Cas protein
                         is_Cas, protein_name, types_list = is_known_Cas_protein(product,types_list)
@@ -1070,13 +1082,23 @@ def find_Cas_proteins(align_pos,record,Cas_gene_distance=20000):
                         else:
                             if pseudogene:
                                 pseudogenes.append(protein_num)  #keep track of the pseudogenes found before homology search, since order can be lost to utilize batch processing on NCBI CD server
-                            check_list.append(protein_num)   
+                            if CDD:
+                                check_list.append(protein_num)
+                            else:
+                                check_list.append(protein_num)
+                                check_aa.append(str(feature.extract(record).seq.translate(to_stop=True)))  #Add the protein sequence
                 except KeyError:
                     pass  #skip CDS annotations with no id or content
-                
+    
     #Now take the proteins that weren't identified and check to see if there are any Cas proteins in them
     if check_list != []:
-        short_names = homology_search(check_list)   #Note: order of the Cas genes is not preserved, only checks if all are present
+        if CDD:
+            #Use the protein accession number to check whether they are Cas proteins
+            short_names = CDD_homology_search(check_list)   #Note: order of the Cas genes is not preserved, only checks if all are present
+        else:
+            #Otherwise the default is search the protein sequences with HMMER to see if they are Cas proteins
+            short_names = HMM_Cas_protein_search(check_list,check_aa,bin_path,HMM_dir)
+        
         for short_name in short_names:    
             is_Cas,protein_name,types_list = is_known_Cas_protein(short_name.split('\t')[1],types_list)
             if is_Cas:
@@ -1180,7 +1202,7 @@ def find_spacer_target(Acc_num_target,alt_alignment):
     
     return self_targets               
     
-def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc):                   
+def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=False):                   
    
     #If Cas_gene_distance is 0, this is a special case where all of the genbank sequences are to be checked in full for any Cas genes
     if Cas_gene_distance == 0:
@@ -1207,7 +1229,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc):
             else:
                 record = download_genbank(genome_Acc)
             print("Checking {0} contig for Cas proteins...".format(genome_Acc))
-            proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,Cas_gene_distance)
+            proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,HMM_dir,CDD,Cas_gene_distance)
             all_proteins_identified += proteins_identified
             all_types_list += types_list
             total_up_down += up_down
@@ -1216,7 +1238,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc):
         up_down = total_up_down
     else:
         #Find Cas proteins near the spacer-repeat region
-        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,Cas_gene_distance)
+        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,HMM_dir,CDD,Cas_gene_distance)
     
     #Determine what Type the locus is
     Type = Type_check(types_list)
@@ -1264,7 +1286,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc):
     
     return Type,Cas_search,renamed_proteins_identified,types_list,up_down                            
  
-def locus_re_annotator(imported_data,Cas_gene_distance):
+def locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,CDD=False):
     
     print("Note! Genbank files are going to be downloaded. Remove them after if unwanted.")
     re_analyzed_data = []
@@ -1277,7 +1299,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance):
             record = SeqIO.read(contig_filename, 'genbank')
         else:
             record = download_genbank(contig_Acc)
-        Type,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc)
+        Type,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD)
         #Convert the Cas protein search results into a printable string       
         if len(Cas_search) > 1:
             proteins = "".join(Cas_search[:2])
@@ -1289,7 +1311,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance):
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
-def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,bin_path,repeats=4):   
+def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,bin_path,HMM_dir,CDD=False,repeats=4):   
 
     #Determine whether the current contig (or genome) has already had it's locus checked
     global loci_checked
@@ -1329,7 +1351,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 #if genome_type == 'complete':
                 #    species += record.features[0].qualifiers["strain"][0]
             
-            Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc) 
+            Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD) 
             
             loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,proteins_identified,Cas_search]   
  
@@ -1446,7 +1468,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 i += 1
             if not os.path.exists('temp'):
                 os.mkdir('temp')
-            clustal_cmd = "clustalo -i - --force --outfmt=clustal -o temp/align_temp_output.aln"        
+            clustal_cmd = "{0}clustalo -i - --force --outfmt=clustal -o temp/align_temp_output.aln".format(bin_path)
             handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate(input=fasta_string)                        
             alignments = AlignIO.read("temp/align_temp_output.aln", "clustal")
@@ -1489,7 +1511,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 file1.write(">Subject_Sequence\n{0}\n".format(target_subseq))
  
             #Then align the spacer sequence to the subsection
-            blast_cmd = "blastn -query {0} -subject {1} -outfmt 4 -max_target_seqs 1 -ungapped -strand plus".format(query_file,subject_file)
+            blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt 4 -max_target_seqs 1 -ungapped -strand plus".format(bin_path,query_file,subject_file)
             handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate()
      
@@ -1541,7 +1563,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         
         with open("temp/consensus_repeat.fa", 'w') as file1:
             file1.write(">consensus_repeat\n{0}\n".format(consensus_repeat))
-        hmm_cmd = "nhmmscan -E 0.001 --noali {0}/Repeats_groups/REPEATS_families_corrected.hmm temp/consensus_repeat.fa ".format(HMM_dir)
+        hmm_cmd = "{0}nhmmscan -E 0.001 --noali {1}/Repeats_groups/REPEATS_families_corrected.hmm temp/consensus_repeat.fa ".format(bin_path,HMM_dir)
         handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = handle.communicate()
         if error != "":
@@ -1725,7 +1747,7 @@ def target_mutation_annotation(repeat_U, repeat_D):
 
     return repeat_mutations                            
 
-def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,bin_path,repeats=4):
+def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,bin_path,HMM_dir,CDD,repeats=4):
 
     #Next, search each genome sequence for each repeat sequence and determine if it shows up more than once (bypassed CRISPR)
     #Since the genomes, spacers, etc. are in the same order, look for the start lengths and filter out reads that were found from CRISPR search
@@ -1837,7 +1859,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                                                                     
                         if outside_loci:   #only keep alignments that don't match 
                             #Determine what the'PAM' sequence is after the non-locus alignment to report                                           
-                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,bin_path,repeats)
+                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,bin_path,HMM_dir,CDD,repeats)
                             if not false_positive:
                                blast_results_filtered_summary.append([Acc_num_self_target,  #Accession # of sequence with position of spacer target outside of array
                                                                       Acc_num,              #Accession # of sequence with position of spacer within array 
@@ -1910,7 +1932,7 @@ def is_known_Cas_protein(product,types_list=[]):
     
     protein_name = ''; is_Cas = False
     for key,values in Cas_proteins.iteritems():
-        if product.find(key) > -1:
+        if product.lower().find(key.lower()) > -1:
             #Check to see if the protein type is annotated
             protein_name = key
             parts = [x.lower() for x in product.split(" ")]
@@ -1942,7 +1964,33 @@ def grab_feature(feature):
         
     return feature_num, target_protein
 
-def homology_search(check_list):
+
+def HMM_Cas_protein_search(check_list,check_aa,bin_path='.',HMM_dir='.'):
+    
+    #First convert the protein names and sequences into a fasta formatted file:
+    with open("temp/HMM_Cas_search.fa", 'w') as file1:
+        index = 0
+        for protein in check_list:
+            file1.write(">{0}\n{1}\n".format(protein,check_aa[index]))
+            index += 1
+    hmm_cmd = "{0}hmmscan -E 1e-20 --tblout temp/HMM_results.txt {1}/Cas.407_XY9n.hmm temp/HMM_Cas_search.fa".format(bin_path,HMM_dir)
+    handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, error = handle.communicate()
+    if error != "":
+        print(error)
+        sys.exit()        
+    #Parse the output to find the best alignments to Cas proteins
+    with open("temp/HMM_results.txt","rU") as file1:
+        lines = file1.readlines()
+    short_names = []
+    for line in lines:
+        if line[0] != "#":   #All lines that aren't data are marked with a hash sign
+            short_names.append(line.split()[2] + "\t" + line.split()[0])
+    
+    return short_names
+
+
+def CDD_homology_search(check_list):
     
     ##Need to POST data to CDD     https://www.ncbi.nlm.nih.gov/Structure/bwrpsb/bwrpsb.cgi
     #cdsid - search string associated with the requested search
@@ -2007,7 +2055,7 @@ def homology_search(check_list):
 def label_self_target(target_protein,feature_num):
     
     if target_protein == 'hypothetical protein':
-        short_names = homology_search([feature_num])
+        short_names = CDD_homology_search([feature_num])
         labels = [x.split('\t')[1] for x in short_names] #removes the leading accession # used to track pseudogenes for the CRISPR locus
         if len(labels) > 3:
             target_protein = ", ".join(labels[:3]) + " (CDD homology search)"
@@ -2016,7 +2064,7 @@ def label_self_target(target_protein,feature_num):
    
     return target_protein
 
-def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_dir,Cas_gene_distance,ask=False):
+def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_dir,Cas_gene_distance,HMM_dir,CDD=False,ask=False):
 
     if num_limit == 0:
         num_limit = default_limit        
@@ -2046,7 +2094,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
 
     #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
-    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,bin_path,repeats)
+    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,bin_path,HMM_dir,CDD,repeats)
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
     output_results(blast_results_filtered_summary,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
@@ -2459,7 +2507,7 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,CDD = params.parse_options(argv)
         
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
@@ -2467,11 +2515,11 @@ def main(argv=None):
             Export_results(in_island,not_in_island,unknown_islands)
         elif rerun_loci:     #Used to rerun the loci annotating code near the spacers found
             imported_data = import_data(spacer_rerun_file)
-            re_analyzed_data  = locus_re_annotator(imported_data,Cas_gene_distance)
+            re_analyzed_data  = locus_re_annotator(imported_data,Cas_gene_distance,CDD)
             output_results(re_analyzed_data,{},{},"Spacer_data_loci_re-analyzed.txt")   #Quickly re-generate the re-analyzed data.          
         else:
             #Identify genomes that contain self-targeting spacers     
-            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,ask)
+            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,CDD,ask)
         
         #Note that the following hasn't been upkept can may not be functional                      
         if not skip_family_create:
