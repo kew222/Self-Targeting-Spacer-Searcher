@@ -803,6 +803,8 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     genomes_searched = []
     bad_genomes = []
     Ns = "N"*500
+    if os.path.isfile("genomes_with_long_stretches_of_Ns.txt"):
+        os.remove("genomes_with_long_stretches_of_Ns.txt")
     for fastaname, holder in fastanames.iteritems():
         print(fastaname)
         good_genome = True
@@ -823,6 +825,8 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
                 if Ns in line:
                     if affected_lines == []:
                         print('Long string of Ns in {0}. Modifying fasta file. Positions will be adjusted, do not rerun with modified file...'.format(fastaname))
+                        with open("genomes_with_long_stretches_of_Ns.txt", "a") as file1:
+                            file1.write(fastaname)
                     pos_adjust = 0
                     Ns_position1 = line.find(Ns)
                     line_temp = line
@@ -1042,6 +1046,7 @@ def download_genbank(contig_Acc):
                 fetch_handle.close()
             break
         except httplib.IncompleteRead:
+            os.remove(genfile_name)
             if attempt == 3:
                 print("httplib.IncompleteRead error at Genbank data fetch. Reached limit of {0} failed attempts.".format(attempt))
                 return
