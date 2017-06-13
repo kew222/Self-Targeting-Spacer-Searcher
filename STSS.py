@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-#STSS (Self-Targeting Spacer Search). This code takes a archaeal/bacterial strain and searches for incorporated phage islands and checks for a working
+#STSS (Self-Targeting Spacer Searcher). This code takes a archaeal/bacterial strain and searches for incorporated phage islands and checks for a working
 #CRISPR system to identify self-targeting spacers
 #Returns a list of potential hits
 
@@ -26,7 +26,6 @@ from Bio.Seq import Seq
 from Bio import AlignIO
 from Bio.Align import AlignInfo
 from Bio import Entrez
-from Bio.Blast import NCBIWWW
 from urllib2 import HTTPError  # for Python 2
 Entrez.email = "watters@berkeley.edu"
 
@@ -34,12 +33,16 @@ bin_path = os.path.dirname(os.path.realpath(__file__)) + "/bin/"
 HMM_dir = "HMMs/"
 
 help_message = '''
-STSS.py searches for potential anti-CRISPR proteins from a supplied bacterial strain
-*Make sure to quote multiword terms*
--Note that currently, can only analyze genomes from NCBI due to current limitations in PHASTER code
+STSS (Self-Targeting Spacer Searcher)
+------------------------------------------
+
+STSS.py searches a set of supplied/searched fasta genomes to look for self-targeting and collects information 
+about the nature of the self-targeting spacers.
+
+*Make sure to quote multiword search terms*
 
 Usage:
-   STSS.py [options] [--dir <directory> | --search <"NCBI search term"> ]
+   STSS.py [options] [--dir <directory with fasta files> | --search <"NCBI search term"> ]
 
 Options
 -h, --help                      Opens help message
@@ -67,10 +70,6 @@ Options
 --skip-PHASTER                  Skip PHASTER analysis (currently can't upload search files)                                
 -p, --rerun-PHASTER <filename>  Rerun PHASTER to recheck islands from provided Spacer search results file
 
--c, --cluster-search            Cluster proteins that are provided to look for anti-CRISPRs (default: No)
---skip-family-search            Skips querying each family against the NCBI database
---families-limit <N>            Limit results of families found to N (default: 300)
---align-families                Perform a multiple sequence alignment on the families found (default: No)
 '''
 
 loci_checked = {}
@@ -145,7 +144,7 @@ class Params:
         
         for option, value in opts:
             if option in ("-v", "--version"):
-                print "anti_CRISPR_miner.py v%s" % (get_version())
+                print "STSS.py v%s" % (get_version())
                 exit(0)
             if option in ("-h", "--help"):
                 raise Usage(help_message)  
@@ -292,7 +291,7 @@ def load_provided(provided_dir,num_limit,complete_only):
                     print("File {0} is doesn't seem to be formatted properly. Skipping.".format(it))
         except:
             raise
-    text2 =  " to analyze for anti-CRISPR sequences."
+    text2 =  " to analyze for self-targeting."
     text1 = "Counted {0} complete sequences".format(provided_complete_counter)
     if not complete_only:
         text1 = text1 + " and {0} WGS contig sets provided".format(provided_WGS_counter)
@@ -789,7 +788,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
     WGS_IDs = []
     
     if num_downloaded > 0:                                                                                                                  
-        print("Downloaded {0} sequences to analyze for anti-CRISPR sequences.".format(num_downloaded))
+        print("Downloaded {0} sequences to analyze for self-targeting sequences.".format(num_downloaded))
     else:
         print("No need to download more sequences.")
 
@@ -835,7 +834,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
                         Ns_position = line_temp.find(Ns)
                         if Ns_position > -1:
                             line_temp = line_temp[:Ns_position] + line_temp[Ns_position+200:]
-                            pos_adjust += 300
+                            pos_adjust += 300	
                             print(line_temp[Ns_position-1000:Ns_position+1000])
                         else:
                             break
@@ -1028,41 +1027,69 @@ def fetch_sequence(fastanames,Acc_num,self_target_contig,provided_dir=''):
     
     return sequence,fastaname
     
-def download_genbank(contig_Acc):
+def download_genbank(contig_Acc,bad_gb_links=[]):
     
     #First, pull down the GenBank records for each accession number with a self-targeting spacer (pull down locus)
     #Can use one record for complete genomes, may need two for contigs
     if not os.path.exists("GenBank_files"):
         os.mkdir("GenBank_files")
-    attempt = 1
-    while attempt <= 3:
-        try:
-            #First get the genbank format and parse into SeqIO
-            genfile_name = "GenBank_files/"+contig_Acc.split(".")[0] + ".gb"
-            if not os.path.isfile(genfile_name):
-                fetch_handle = Entrez.efetch(db="nucleotide", rettype="gbwithparts", retmode="text", id=contig_Acc)
-                with open(genfile_name, 'w') as genfile:
-                    genfile.write(fetch_handle.read())
-                fetch_handle.close()
-            break
-        except httplib.IncompleteRead:
-            os.remove(genfile_name)
-            if attempt == 3:
-                print("httplib.IncompleteRead error at Genbank data fetch. Reached limit of {0} failed attempts.".format(attempt))
-                return
-            else:
-                print("httplib.IncompleteRead error at Genbank data fetch. Attempt #{0}. Retrying...".format(attempt))
-        except HTTPError as err:
-            if 500 <= err.code <= 599:
-                print("Received error from server %s" % err)
-                print("Attempt %i of 3" % attempt)
-                attempt += 1
-                time.sleep(15)
-            else:
-                raise
-        except:
-            raise      
-    record = SeqIO.read(genfile_name, 'genbank')
+    attempt = 1; skip = False
+    genfile_name = "GenBank_files/"+contig_Acc.split(".")[0] + ".gb"
+    if contig_Acc not in bad_gb_links:
+        while attempt <= 3:
+            try:
+                #First get the genbank format and parse into SeqIO
+                if not os.path.isfile(genfile_name):
+                    fetch_handle = Entrez.efetch(db="nucleotide", rettype="gbwithparts", retmode="text", id=contig_Acc)
+                    data = fetch_handle.read()                        
+                    fetch_handle.close()
+                    print(genfile_name, "pickles")
+                    if data != '':
+                        print('vinegar')
+                        with open(genfile_name, 'w') as genfile:
+                            genfile.write(data)
+                    else:
+                        skip = True
+                break
+            except httplib.IncompleteRead:
+                if attempt == 3:
+                    print("httplib.IncompleteRead error at Genbank data fetch. Reached limit of {0} failed attempts.".format(attempt))
+                    skip = True
+                    break
+                else:
+                    print("httplib.IncompleteRead error at Genbank data fetch. Attempt #{0}. Retrying...".format(attempt))
+            except HTTPError as err:
+                if 500 <= err.code <= 599:
+                    print("Received error from server %s" % err)
+                    print("Attempt %i of 3" % attempt)
+                    attempt += 1
+                    time.sleep(15)
+                elif err.code == 400:  #This will happen if the name of isn't an accession number
+                    print("{0} isn't a valid accession number and/or a matching *.gb file is missing".format(contig_Acc))
+                    bad_gb_links.append(contig_Acc)
+                    skip = True
+                    break
+                else:
+                    raise
+            except ValueError as err:   #occurs when no records in a downloaded 
+                print("WARNING!: {0} - no data, skipping analysis of this target...".format(err.message))
+                bad_gb_links.append(contig_Acc)
+                skip = True
+                break
+            except:
+                raise 
+        else:  #if the number of attempts is exceeded
+            print("Too many failed connection attempts, please check your internet connection.")
+            exit()    
+    else:
+        skip = True
+    if skip:
+        print('silly skipper')
+        record = ''
+        if os.path.isfile(genfile_name):
+            os.remove(genfile_name) 
+    else:     
+        record = SeqIO.read(genfile_name, 'genbank')
     return record    
     
 def find_Cas_proteins(align_pos,record,HMM_dir,CDD=False,Cas_gene_distance=20000):
@@ -1215,26 +1242,28 @@ def find_spacer_target(Acc_num_target,alt_alignment):
     #If it isn't targeting a gene, look at gene on each side
     record = download_genbank(Acc_num_target)
     #Find which gene is targeted by the spacer
-    self_targets = []
-    lagging_feature = ''
-    for feature in record.features:
-        if feature.type not in ('gene','source'):
-            if feature.location.start <= alt_alignment <= feature.location.end:
-                feature_num, target_protein = grab_feature(feature)
-                target_protein = label_self_target(target_protein,feature_num)
-                self_targets.append([feature_num, target_protein])
-                break
-            elif feature.location.start > alt_alignment:   #The spacer is in between this feature and the previous
-                feature_num1, target_protein1 = grab_feature(feature)
-                target_protein1 = label_self_target(target_protein1,feature_num1)
-                self_targets.append([feature_num1, target_protein1])
-                
-                feature_num2, target_protein2 = grab_feature(lagging_feature)
-                target_protein2 = label_self_target(target_protein2,feature_num2)
-                self_targets.append([feature_num2, target_protein2])
-                break       
-        lagging_feature = feature   #Used to store first feature in case spacer falls in the middle of two genes                    
-    
+    if type(record) is not str:
+        self_targets = []
+        lagging_feature = ''
+        for feature in record.features:
+            if feature.type not in ('gene','source'):
+                if feature.location.start <= alt_alignment <= feature.location.end:
+                    feature_num, target_protein = grab_feature(feature)
+                    target_protein = label_self_target(target_protein,feature_num)
+                    self_targets.append([feature_num, target_protein])
+                    break
+                elif feature.location.start > alt_alignment:   #The spacer is in between this feature and the previous
+                    feature_num1, target_protein1 = grab_feature(feature)
+                    target_protein1 = label_self_target(target_protein1,feature_num1)
+                    self_targets.append([feature_num1, target_protein1])
+                    
+                    feature_num2, target_protein2 = grab_feature(lagging_feature)
+                    target_protein2 = label_self_target(target_protein2,feature_num2)
+                    self_targets.append([feature_num2, target_protein2])
+                    break       
+            lagging_feature = feature   #Used to store first feature in case spacer falls in the middle of two genes                    
+    else:
+        self_targets = [["----No genbank file", "skipped----"]]    
     return self_targets               
     
 def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=False):                   
@@ -1244,17 +1273,11 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=
         #will need to determine what all of the genbank files are, download them and search all of them for Cas genes
         
         #First, look up the assembly that the locus containing contig is in
-        print(contig_Acc)
         genomes = NCBI_search(contig_Acc,"nucleotide",num_limit=100000,tag="",exclude_term="")
-        print(genomes)
         assemblies=[]
-        print(assemblies)
         assemblies = link_nucleotide_to_assembly(genomes,assemblies,num_limit=100000) 
-        print(assemblies)
         contig_GIs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[])
-        print(contig_GIs)
         genome_Accs = get_Accs(contig_GIs[0])
-        print(genome_Accs)
         
         all_proteins_identified = []; all_types_list = []; total_up_down = 0
         for genome_Acc in genome_Accs:
@@ -1296,21 +1319,6 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=
             if name == '':
                 renamed_proteins_identified.pop(index)  #remove the first blank position
             index += 1
-    
-    #Deprecated renaming code
-    
-    #for key,values in Cas_synonym_list.iteritems():
-    #    if key in Cas_search:     #Searching only keys that are found would be slightly faster, but would not catch Cas proteins in completely Unknown subtypes
-    #    for Cas_synonyms in values:   
-    #        if len(Cas_synonyms) > 1:
-     #           for synonym in Cas_synonyms[1:]:  #Will use the first apperance as the only to display         
-     #               if synonym in proteins_identified and Cas_synonyms[0] not in filtered_proteins_identified:
-                        #This means there is a protein that could be rewritten with a more broadly applicable name (e.g. Csn1 -> Cas9)
-    #                    filtered_proteins_identified.append(Cas_synonyms[0] + " ({0})".format(synonym))            
-    #        else:
-    #            if Cas_synonyms[0] in proteins_identified and Cas_synonyms[0] not in filtered_proteins_identified:
-    #                filtered_proteins_identified.append(Cas_synonyms[0])            
-                    
                                                       
     #Handle the case that occurs if Type II-C (Type II-C can't be picked unless Cas9 is annotated with 'II-C')
     #Because Csn2 or Cas4 will automatically annotate as II-B or II-C, if all three are possible, must be II-C
@@ -1376,20 +1384,21 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         if need_locus_info:
             #Download the genbank file
             record = download_genbank(contig_Acc)
-            
-            #Get the species name
-            species = record.description.split(",")[0]
-            if genome_type == "WGS":
-                for word in ("contig","Contig","genomic scaffold","scaffold"):
-                    species = species.split(word)[0] 
-                #species = record.features[0].qualifiers["organism"][0]
-                #if genome_type == 'complete':
-                #    species += record.features[0].qualifiers["strain"][0]
-            
-            Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD) 
-            
-            loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,proteins_identified,Cas_search]   
- 
+            if type(record) is not str:
+                #Get the species name
+                species = record.description.split(",")[0]
+                if genome_type == "WGS":
+                    for word in ("contig","Contig","genomic scaffold","scaffold"):
+                        species = species.split(word)[0] 
+                    #species = record.features[0].qualifiers["organism"][0]
+                    #if genome_type == 'complete':
+                    #    species += record.features[0].qualifiers["strain"][0]
+                
+                Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD) 
+            else:
+                species = "Missing genbank formatted data"; Type_proteins = "-----"; proteins_identified = ['-----']; Cas_search = ['-----']; up_down = 0; types_list = []
+            loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,proteins_identified,Cas_search] 
+
         #Going to figure out what the consensus repeat is and if there are mutations in it.
         consensus_repeat = "Skipped"
         repeat_mutations = "Skipped"
@@ -1538,7 +1547,9 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 file1.write(">Query_Sequence\n{0}\n".format(spacer_seq))
             #Then write the subject file with a subsequence near the aligned position
             pad_size = 60
-            target_subseq = sequence[alt_alignment-pad_size:alt_alignment+len(spacer_seq)+pad_size]   #creates a subsequence to search where the target is known to occur with some padding
+            lower = max(alt_alignment-pad_size,0)  #adjust for padding making an index that goes off the edge of the contig
+            upper = min(alt_alignment+len(spacer_seq)+pad_size,len(sequence))
+            target_subseq = sequence[lower:upper]   #creates a subsequence to search where the target is known to occur with some padding
             if direction < 1:  #always makes alignment in the same direction
                 target_subseq = str(Seq(target_subseq).reverse_complement())
             subject_file = "temp/temp_subject.txt"
@@ -1550,11 +1561,11 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate()
      
-            print(output)
             #Now look up what part of the spacer aligns, and extend the alignment in both directions
             #Because CRISPR alignment will not allow for indels, assume that stuck in register of best alignment
             #In reality, one end or the other of the spacer will be more important, but the best alignment is not in the same register as the PAM/seed region, it probably can't bind anyway
             
+            print(target_subseq)
             expression1 = re.compile("Query_\d+")
             expression2 = re.compile("Subject_\d+")
             for line in output.split('\n'):
@@ -1739,8 +1750,10 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             
         #if the validity of the locus hasn't been determined yet, include the information
         if len(loci_checked[contig_Acc + "-" + str(crispr)]) < 5:
-           loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,Type_repeat,proteins_identified,Cas_search,array_direction,false_positive]
-        
+            try:
+               loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,Type_repeat,proteins_identified,Cas_search,array_direction,false_positive]
+            except UnboundLocalError:
+               loci_checked[contig_Acc + "-" + str(crispr)] = ["Missing genbank formatted data","","","","",array_direction,false_positive]
         #Now search the genbank files to see what the self-targeting gene is and look up if hypothetical
         self_targets = find_spacer_target(Acc_num_self_target,alt_alignment)
                                                                                                 
@@ -1764,13 +1777,16 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 locus_condition += ", " + ", ".join(Cas_search[2:])
         else:  
             locus_condition = Cas_search[0]
-        if len(proteins_identified) > 1:
-            proteins_found = ", ".join(proteins_identified[:])
-        elif len(proteins_identified) == 1:
-            proteins_found = proteins_identified[0]
-        else:
-            proteins_found = 'None'
-
+        try:
+            if len(proteins_identified) > 1:
+                proteins_found = ", ".join(proteins_identified[:])
+            elif len(proteins_identified) == 1:
+                proteins_found = proteins_identified[0]
+            else:
+                proteins_found = 'None'
+        except UnboundLocalError:
+            proteins_found = 'N/A'
+            
         return PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive
 
 def flip_mismatch_notation(sequence):
@@ -2022,7 +2038,6 @@ def grab_feature(feature):
         
     return feature_num, target_protein
 
-
 def HMM_Cas_protein_search(check_list,check_aa,bin_path='.',HMM_dir='.'):
     
     #First convert the protein names and sequences into a fasta formatted file:
@@ -2046,7 +2061,6 @@ def HMM_Cas_protein_search(check_list,check_aa,bin_path='.',HMM_dir='.'):
             short_names.append(line.split()[2] + "\t" + line.split()[0])
     
     return short_names
-
 
 def CDD_homology_search(check_list):
     
@@ -2165,49 +2179,8 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
         protein_list = []
         print("Skipping PHASTER analysis")
 
-    return protein_list 
-        
-def mine_proteins(protein_list,Acc_to_search,proteins_found,region,hit_num=None,all_islands=False):
-    
-    #Now want to mine all of the unassigned/predicted proteins 
-    webcall = "http://phaster.ca/jobs/{0}/detail.txt".format(Acc_to_search)
-    tries = 0
-    while True:
-        tries += 1
-        try:
-            q = requests.get(webcall, timeout=20)  #do a PHASTER search in the potential hits genome
-            break
-        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
-            time.sleep(5)  #wait 5 seconds and retry
-        if tries > 3:
-            print("PHASTER server not responding to query for details on {0}. Skipping...".format(Acc_to_search))
-            break
-    q2 = q.text
-    q3 = q2.split("\n")
-    protein_list.append([proteins_found])
-    right_region = False
-    for protein in q3:
-        if right_region == True and protein.strip() != '' and protein.strip()[:3] != '###':
-            island_protein = [str(x).strip() for x in filter(None, protein.split("  "))]
-            phrases_to_search = ["hypothetical", "phage-like"]
-            for phrase in phrases_to_search: 
-                if island_protein[1].find(phrase) > -1:
-                    protein_list[hit_num].append(island_protein) 
-        elif right_region == False:
-            if protein[:12] == "#### region ":
-                if all_islands:
-                    right_region = True   #if recording all proteins from islands, skip finding if in same one as spacer
-                else:                                        
-                    current_region = int(protein.split("region ")[1].split(" ####")[0])
-                    if current_region == region: ##That is, is the current region cycling through the one the spacer is in
-                        right_region = True
-        elif protein.strip() == '' or protein.strip()[:3] == "###" and right_region == True:
-            right_region = False
-            if not all_islands:
-                break     #found the right region and all the proteins have been checked
-    hit_num+=1
-    return protein_list,hit_num       
-              
+    return protein_list     
+                                
 def PHASTER_analysis(blast_results_filtered_summary,current_dir,in_islands_only=True,all_islands=False,skip_family_create=True):
 
     in_island = []
@@ -2340,205 +2313,6 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
 
     return lines,skip_entry
 
-def family_cluster(protein_list,E_value_limit=1e-3):
-
-    #Iteratively BLAST all proteins against all other proteins, but only blast those that haven't been aligned yet
-    #If makes a certain cutoff, store as a site for that protein
-    protein_hits_dict = {}
-    protein_hits_list = []
-    for spacer in protein_list:
-        store_spacer = spacer[0]
-        for index in range(1,len(spacer)):
-            protein_hits_dict[spacer[index][1].replace(" ","_")] = [spacer[index][3], store_spacer]  #makes a dictionary of proteins with name, sequence in each element
-            protein_hits_list.append([spacer[index][1],spacer[index][3]])  #name, protein sequence
-    BLAST_file = "subject_list.fasta"  
-    query_file = "query.fasta"
-    
-    #Now, split the fasta file entry by entry, so only aligning down the list
-    families = []     #blast check for identities
-    protein_counter = 0
-    for protein_num in protein_hits_list:
-        #write a short file for the query
-        with open(query_file, "w") as compiled_file:  #need to write a file for the blastp input (can't pass for multiple)
-            name = protein_hits_list[protein_counter][0].replace(" ","_")
-            AAseq = protein_hits_list[protein_counter][1]
-            compiled_file.write(">{0}\n{1}\n".format(name,AAseq))   
-        
-        #write out the rest of the proteins in a separate subject file
-        with open(BLAST_file, "w") as compiled_file2:  #need to write a file for the blastp input (can't pass for multiple)
-            for protein in protein_hits_list[protein_counter+1:]:
-                name = protein[0].replace(" ","_")
-                AAseq = protein[1]
-                compiled_file2.write(">{0}\n{1}\n".format(name,AAseq))     
-                
-        blast_cmd = "blastp -query {0} -subject {1} -outfmt 6".format(query_file,BLAST_file)
-        handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output, error = handle.communicate()
-        
-        temp_list = [protein_num[0].replace(" ","_")]
-        for line in output.split("\n"):
-            if line.strip() != '':
-                result = line.split('\t')
-                E_value = float(result[-2])
-                target = result[1]
-                #query, target, ident, length, bit = result[0], result[1], result[2], result[3], float(result[-1]) 
-                if E_value <= E_value_limit:  #default is 1e-3
-                    temp_list.append(target)
-        fam_num = 0
-        no_family_match = True
-        for family in families:
-            ## look at protein 1 vs. 2-99, save list of matches E-value <= 1e-3 as 1, put blank if none
-            ## look at protein 2 vs. 3-99, obtain  list of matches E-value <= 1e-3 
-            #   check group 1 if contains 2, if yes, add to previous group (1), if in no groups make new group (2)
-            for member in family:
-                if protein_num[0] == member:
-                    families[fam_num].append(temp_list)
-                    no_family_match = False   
-            fam_num += 1
-        if no_family_match == True and len(temp_list) > 1:
-            families.append(temp_list) 
-        protein_counter += 1
-
-    #Export in-island blast results to fasta format
-    with open("full_protein_list.txt","w") as ifile:
-        for line in protein_list:
-            y = 1
-            for x in line:
-                if y > 1:
-                    ifile.write(">"+str(x[1]).replace(" ","_")+"\n" + str(x[3]) + "\n")
-                y += 1    
-                
-    #check for duplicates in the alignment matrix (by sequence) and remove them, remove family if only one entry remains after duplicates
-    family_no = 0
-    for family in families:
-        num_members = len(family)
-        member_no = 0
-        for member in family:
-            member_seq = protein_hits_dict[member][0]
-            for x in range(num_members-1,member_no,-1):  #search backwards so the index numbers don't change as being removed.
-                check_seq = protein_hits_dict[family[x]][0]
-                if member_seq == check_seq:
-                    del families[family_no][x]
-                    num_members -= 1  #if removed, one less
-            member_no += 1 #keeps track of position of the member being checked
-        family_no += 1 
-    ordered_families = sorted(families, key=len, reverse=True)
-    families = []
-    for family in ordered_families:
-        if len(family) > 1:          #remove single element families
-            families.append(family)          
-    print("Finished assigning protein families.")
-    return families,protein_hits_dict,query_file,BLAST_file
-
-def families_print(families,protein_hits_dict,families_limit):
-
-    #Output the lists of protein families with details
-    families_file = "potential_families.txt"
-    fam_num = 1
-    with open(families_file, "w") as fileobj:    
-        fileobj.write("GI #\tAccession #\tCRISPR #\tSpacer #\tSpacer Locus Pos.\tSpacer Genome Pos.\tSpacer Sequence\tPAM Region\tPHASTER Island\tProtein Name\tAA Sequence")
-        for family in families:
-            if fam_num <= families_limit:
-                fileobj.write("\nCandidate Family {0}".format(fam_num))
-                for member in family:
-                    member_seq = protein_hits_dict[member][0]
-                    details = protein_hits_dict[member][1]
-                    member_details = [str(x) for x in details]
-                    fileobj.write("\n{0}\t{1}\t{2}".format("\t".join(member_details),member,member_seq))
-                fileobj.write("\n")  #add a space to separate families
-            fam_num += 1
-
-    #Also create a file that has just the first member of each family in fasta format to search for conserved domains, etc.
-    with open("family_representatives.fasta", "w") as domain_file:
-        family_no = 1
-        for family in families:
-            name = "Family {0} Representative".format(family_no)
-            seq = protein_hits_dict[family[0]][0]
-            domain_file.write(">{0}\n{1}\n".format(name, seq))
-            family_no += 1
-
-def families_search(families,families_limit,current_dir,search='',E_value_limit=1e-3):
-    
-    if families == []:
-            print("No families found.")             ####This part should be recoded with CDD
-            return
-    if not os.path.exists("Family_BLASTs"):
-        os.mkdir("Family_BLASTs")
-    print("Waiting for BLAST of families against NCBI database....")
-    with open("family_representatives.fasta", 'rU') as inputfile:
-        fasta2 = SeqIO.parse(inputfile, 'fasta')
-        family_no = 1
-        for record in fasta2:
-            if family_no <= families_limit:
-                if search != '':
-                    ignore_results = "NOT {0}".format(search)
-                else:
-                    ignore_results = ''
-                blastp2 = NCBIWWW.qblast("blastp", 'nr', record, entrez_query=ignore_results, expect=E_value_limit, hitlist_size=10, format_type="Text")
-                with open(current_dir+"Family_BLASTs/family_{0}_BLAST.txt".format(family_no), "w") as save_file: 
-                    for lines in blastp2:
-                        save_file.write(lines)    
-                family_no += 1
-    blastp2.close()
-    print("Completed BLAST of family representatives to NCBI database")
-
-def families_alignment(families,protein_hits_dict,current_dir):
-
-    #Now use either BLAST or Clustal Omega to do the alignment and report results
-    fam_num = 1
-    results_dir = current_dir+"Candidate_family_alignments/"
-    if not os.path.exists(results_dir):
-        os.mkdir("Candidate_family_alignments")
-    for family in families:
-        if len(family) > 2:
-            #Use Clustal Omega to compare 3+
-            output_file = results_dir + "family_{0}.aln".format(fam_num)
-            with open(current_dir+"clustal_temp.fasta","w") as holder:
-                for member in family:
-                    holder.write(">{0}\n{1}\n".format(member,protein_hits_dict[member][0]))        
-            clustal_cmd = "clustalo -i {0} -o {1} --force".format("clustal_temp.fasta",output_file)
-            clo = subprocess.Popen(clustal_cmd.split())
-            clo.communicate()
-        else:
-            #Use BLAST to compare two sequences
-            output_file = results_dir + "family_{0}.txt".format(fam_num)
-            with open("Blast_q_temp.fasta","w") as holder:        
-                holder.write(">{0}\n{1}\n".format(family[0],protein_hits_dict[family[0]][0]))
-            with open("Blast_s_temp.fasta","w") as holder:  
-                holder.write(">{0}\n{1}\n".format(family[1],protein_hits_dict[family[1]][0]))
-            blast_cmd = "blastp -query {0} -subject {1} -outfmt 0".format("Blast_q_temp.fasta","Blast_s_temp.fasta",output_file)
-            handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output, error = handle.communicate()
-            with open(output_file,"w") as result:
-                result.write(output)
-        fam_num += 1
-    print("Family alignments complete.")
-
-def anti_CRISPR_cluster_tool(protein_list,E_value_limit,families_limit,search='',skip_family_search=True,skip_family_create=True,skip_alignment=True):
-
-    if protein_list == []:
-        print("No candidate proteins found. Exiting...\n")
-        return
-    
-    #BLAST all the protein results against themselves to see if any proteins group together
-    families,protein_hits_dict,query_file,BLAST_file = family_cluster(protein_list,E_value_limit)
- 
-    #Output information about the families that were determine
-    families_print(families,protein_hits_dict,families_limit)
- 
-    #Compare families to what's on NCBI (this sould be CDD, not blast)
-    if not skip_family_search:
-        families_search(families)
-    
-    #Align the families using ClustelO or BLAST
-    if not skip_alignment:
-        families_alignment(families,protein_hits_dict)
-    
-    #Clean up leftover files
-    for xx in [query_file,BLAST_file,"clustal_temp.fasta","Blast_q_temp.fasta","Blast_s_temp.fasta"]:
-        if os.path.isfile(xx):
-            os.remove(xx)  #get rid of the temp files
-
 def import_data(input_file):
     #read files into data structure, should be in output format from code above
     with open(input_file, 'rU') as fileread:
@@ -2578,13 +2352,7 @@ def main(argv=None):
         else:
             #Identify genomes that contain self-targeting spacers     
             protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,CDD,ask)
-        
-        #Note that the following hasn't been upkept can may not be functional                      
-        if not skip_family_create:
-            #Cluster proteins found near the targeted spacer and look for those that 
-            anti_CRISPR_cluster_tool(protein_list,E_value_limit,families_limit,search,skip_family_search,skip_family_create,skip_alignment,current_dir)     
-        
-                
+                        
     except Usage, err:
         print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
         print >> sys.stderr, ""
