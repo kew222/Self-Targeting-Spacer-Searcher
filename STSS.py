@@ -806,7 +806,6 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     if os.path.isfile("genomes_with_long_stretches_of_Ns.txt"):
         os.remove("genomes_with_long_stretches_of_Ns.txt")
     for fastaname, holder in fastanames.iteritems():
-        print(fastaname)
         good_genome = True
         filein = holder[0]
         if current_dir in filein:
@@ -824,7 +823,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
             for line in lines:
                 if Ns in line:
                     if affected_lines == []:
-                        print('Long string of Ns in {0}. Modifying fasta file. Positions will be adjusted, do not rerun with modified file...'.format(fastaname))
+                        print('Long string of Ns in {0}. Modifying fasta file. Positions will be adjusted...'.format(fastaname))
                         with open("genomes_with_long_stretches_of_Ns.txt", "a") as file1:
                             file1.write(fastaname+'\n')
                     pos_adjust = 0
@@ -842,9 +841,14 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
                             #good_genome = False
                     lines[line_no] = line_temp
                     affected_lines.append([abs_pos+Ns_position1,pos_adjust])  #will store where the replacements are occuring  
-                    with open(filein, 'w') as file1:
+                    mod_dir = "/".join(filein.split("/")[:-1])+"/edited_fastas/"
+                    mod_file = mod_dir + filein.split("/")[1][:-6]+"_Ns_removed.fasta"
+                    if not os.path.exists(mod_dir):
+                        os.mkdir(mod_dir)
+                    with open(mod_file, 'w') as file1:
                         for a in lines:
                             file1.write(a) 
+                    fastanames[fastaname] = [mod_file] + holder[1:]
                 abs_pos += len(line)
                 line_no += 1
             #Store the affected_lines in this fastaname as a dictionary
