@@ -801,6 +801,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     CRISPR_results = []    #list of files with CRISPR loci search results
     genomes_searched = []
     bad_genomes = []
+    affected_lines = []
     Ns = "N"*500
     if os.path.isfile("genomes_with_long_stretches_of_Ns.txt"):
         os.remove("genomes_with_long_stretches_of_Ns.txt")
@@ -819,7 +820,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
             print('No genomic data in {0}. Skipping...'.format(fastaname))
             good_genome = False
         else:
-            line_no = 0; abs_pos = 0; affected_lines = []
+            line_no = 0; abs_pos = 0
             for line in lines:
                 if Ns in line:
                     if affected_lines == []:
@@ -2100,7 +2101,7 @@ def CDD_homology_search(check_list):
                 statuscode = line.split("\t")[1].strip()   #0 - success, 2 - no input, 3 - running, 1,4,5 are errors
                 break
         else:
-            satuscode = -1    #this status code that indicates still waiting for a response
+            statuscode = -1    #this status code that indicates still waiting for a response
         
         if statuscode in ('1','4','5'):
             print("Error in protein homology search. Skipping entry...")    
