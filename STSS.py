@@ -2099,6 +2099,8 @@ def CDD_homology_search(check_list):
             if line.find("status") > -1:
                 statuscode = line.split("\t")[1].strip()   #0 - success, 2 - no input, 3 - running, 1,4,5 are errors
                 break
+        else:
+            satuscode = -1    #this status code that indicates still waiting for a response
         
         if statuscode in ('1','4','5'):
             print("Error in protein homology search. Skipping entry...")    
@@ -2192,7 +2194,6 @@ def PHASTER_analysis(blast_results_filtered_summary,current_dir,in_islands_only=
     print("Running PHASTER analysis...")
     if not os.path.exists("PHASTER_analysis"):
         os.mkdir("PHASTER_analysis")
-    hit_num = 0
     skip_entry = True
     for potential_hit in blast_results_filtered_summary:
         #First determine if the analysis has been done before
@@ -2222,17 +2223,11 @@ def PHASTER_analysis(blast_results_filtered_summary,current_dir,in_islands_only=
                     if results != []:
                         island_start = int(results[4].split("-")[0])
                         island_end = int(results[4].split("-")[1])
-                        spacer_pos = potential_hit[8]
-                        start_mining = False
+                        spacer_pos = potential_hit[9]
                         temp = potential_hit
-                        if island_start <= spacer_pos <= island_end-len(potential_hit[10]):  #check to see if in an island
-                            start_mining = True
+                        if island_start <= spacer_pos <= island_end-len(potential_hit[11]):  #check to see if in an island
                             found_island = True
                             temp = potential_hit[:-1] + [region]  #replace 'N/A' in PHASTER island with the island number
-                        elif all_islands and not in_islands_only:  #If not, see if the protein should be grabbed anyway due to opions
-                            start_mining = True   
-                        if start_mining and not skip_family_create:    
-                            mine_proteins(Acc_to_search,temp,region,hit_num,all_islands)       
                     elif region == 1 and results == []:
                         temp = potential_hit[:-1] + ["none identified"]   #replace 'N/A' in PHASTER island if no islands are found   
                     elif region > 1 and not found_island:  
