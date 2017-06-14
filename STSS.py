@@ -801,7 +801,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     CRISPR_results = []    #list of files with CRISPR loci search results
     genomes_searched = []
     bad_genomes = []
-    affected_lines = []
+    affected_genomes = {}
     Ns = "N"*500
     if os.path.isfile("genomes_with_long_stretches_of_Ns.txt"):
         os.remove("genomes_with_long_stretches_of_Ns.txt")
@@ -820,13 +820,13 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
             print('No genomic data in {0}. Skipping...'.format(fastaname))
             good_genome = False
         else:
-            line_no = 0; abs_pos = 0
+            line_no = 0; abs_pos = 0; affected_lines = []
             for line in lines:
                 if Ns in line:
                     if affected_lines == []:
                         print('Long string of Ns in {0}. Modifying fasta file. Positions will be adjusted, do not rerun with modified file...'.format(fastaname))
                         with open("genomes_with_long_stretches_of_Ns.txt", "a") as file1:
-                            file1.write(fastaname)
+                            file1.write(fastaname+'\n')
                     pos_adjust = 0
                     Ns_position1 = line.find(Ns)
                     line_temp = line
@@ -846,6 +846,9 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
                         for a in lines:
                             file1.write(a) 
                 abs_pos += len(line)
+                line_no += 1
+            #Store the affected_lines in this fastaname as a dictionary
+            affected_genomes[fastaname] = affected_lines
 
         if good_genome:     
             result_file = "CRISPR_analysis/" + fastaname.split(".")[0] + ".out"
@@ -880,9 +883,9 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     
     print("Finished searching for CRISPR spacer-repeats.")
 
-    return CRISPR_results, affected_lines
+    return CRISPR_results, affected_genomes
 
-def get_loci(CRISPR_results,fastanames,affected_lines=[]):
+def get_loci(CRISPR_results,fastanames,affected_genomes={}):
 
     #Data is stored at the uppermost level as each genome
     #Next level is the Acc # (0 index) and a list containing the CRISPR # and 2 member lists of the spacer sequences and their positions
@@ -922,7 +925,8 @@ def get_loci(CRISPR_results,fastanames,affected_lines=[]):
                         if curr_spacer != '\n':
                             curr_spacer_pos = int(lines[locus+2+spacer_counter].split("\t")[0]) + int(lines[locus+2+spacer_counter].split("\t")[4].split(" ")[1][:-1])
                             #Need to potentially adjust the current spacer position because of long strings of Ns in the genome
-                            if affected_lines != []: 
+                            try:
+                                affected_lines = affected_genomes[genome[1]]
                                 #Need to add the number of Ns removed upstream of the spacer position to its position value
                                 adjust_val = 0
                                 for line in affected_lines:
@@ -931,6 +935,8 @@ def get_loci(CRISPR_results,fastanames,affected_lines=[]):
                                     else:
                                         break
                                 curr_spacer_pos += adjust_val
+                            except KeyError:
+                                pass
                             spacer_data[genome_counter][CRISPR_counter].append([curr_spacer])
                             spacer_data[genome_counter][CRISPR_counter][spacer_counter].append(curr_spacer_pos)
                             spacer_counter += 1
@@ -2160,10 +2166,10 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
         fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask)
 
     #Search each genome for CRIPSR repeat-spacers
-    CRISPR_results, affected_lines = spacer_scanner(fastanames,bin_path,repeats,current_dir)
+    CRISPR_results, affected_genomes = spacer_scanner(fastanames,bin_path,repeats,current_dir)
     
     #BLAST each spacer sequence against the genome
-    spacer_data,num_loci = get_loci(CRISPR_results,fastanames, affected_lines)
+    spacer_data,num_loci = get_loci(CRISPR_results,fastanames, affected_genomes)
 
     #Check to see which of the spacers appears in the genome outside of any indentified CRIPSR loci
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
