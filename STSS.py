@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-#STSS (Self-Targeting Spacer Searcher). This code takes a archaeal/bacterial strain and searches for incorporated phage islands and checks for a working
+#STSS (Self-Targeting Spacer Search tool). This code takes a archaeal/bacterial strain and searches for incorporated phage islands and checks for a working
 #CRISPR system to identify self-targeting spacers
 #Returns a list of potential hits
 
@@ -33,7 +33,7 @@ bin_path = os.path.dirname(os.path.realpath(__file__)) + "/bin/"
 HMM_dir = "HMMs/"
 
 help_message = '''
-STSS (Self-Targeting Spacer Searcher)
+STSS (Self-Targeting Spacer Search tool)
 ------------------------------------------
 
 STSS.py searches a set of supplied/searched fasta genomes to look for self-targeting and collects information 
@@ -767,6 +767,12 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
                     time.sleep(15)
                 else:
                     raise
+            except httplib.IncompleteRead:
+                if attempt == 3:
+                    print("httplib.IncompleteRead error at fasta data fetch. Reached limit of {0} failed attempts.".format(attempt))
+                    break
+                else:
+                    print("httplib.IncompleteRead error at fasta data fetch. Attempt #{0}. Retrying...".format(attempt))
         
         #retrieve the master accession number, stored from before
         if data != []:
@@ -827,33 +833,33 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
                         with open("genomes_with_long_stretches_of_Ns.txt", "a") as file1:
                             file1.write(fastaname+'\n')
                     pos_adjust = 0
-                    Ns_position1 = line.find(Ns)
+                    #Look for instances of long strings of Ns, need to search line by line, as well as within each line
                     line_temp = line
-                    while True:
-                    #Find where the Ns are, and replace them with 100 Ns and note that the positions have been altered by 300, then repeat and look for again
-                        Ns_position = line_temp.find(Ns)
-                        if Ns_position > -1:
-                            line_temp = line_temp[:Ns_position] + line_temp[Ns_position+200:]
-                            pos_adjust += 300	
-                            print(line_temp[Ns_position-1000:Ns_position+1000])
-                        else:
-                            break
-                            #good_genome = False
-                    lines[line_no] = line_temp
-                    affected_lines.append([abs_pos+Ns_position1,pos_adjust])  #will store where the replacements are occuring  
-                    mod_dir = "/".join(filein.split("/")[:-1])+"/edited_fastas/"
-                    mod_file = mod_dir + filein.split("/")[1][:-6]+"_Ns_removed.fasta"
-                    if not os.path.exists(mod_dir):
-                        os.mkdir(mod_dir)
-                    with open(mod_file, 'w') as file1:
-                        for a in lines:
-                            file1.write(a) 
-                    fastanames[fastaname] = [mod_file] + holder[1:]
-                abs_pos += len(line)
+                    adj_leng = 200  #number of Ns to remove in a chunk
+                    while line_temp.find(Ns) != -1:
+                        Ns_position_orig = line_temp.find(Ns)
+                        Ns_position = Ns_position_orig 
+                        while Ns_position == Ns_position_orig:
+                        #Find where the Ns are, and remove 200 then note that the positions have been altered by 200, then repeat and look for again
+                            line_temp = line_temp[:Ns_position] + line_temp[Ns_position+adj_leng:]
+                            pos_adjust += adj_leng
+                            Ns_position = line_temp.find(Ns)
+                        lines[line_no] = line_temp
+                    affected_lines.append([abs_pos+Ns_position_orig,pos_adjust])  #will store where the replacements are occuring  
+                abs_pos += len(lines[line_no])
                 line_no += 1
+            mod_dir = "/".join(filein.split("/")[:-1])+"/edited_fastas/"
+            mod_file = mod_dir + filein.split("/")[1][:-6]+"_Ns_removed.fasta"
+            if not os.path.exists(mod_dir):
+                os.mkdir(mod_dir)
+            with open(mod_file, 'w') as file1:
+                for a in lines:
+                    file1.write(a) 
+            fastanames[fastaname] = [mod_file] + holder[1:]
+            filein = mod_file
             #Store the affected_lines in this fastaname as a dictionary
             affected_genomes[fastaname] = affected_lines
-
+            
         if good_genome:     
             result_file = "CRISPR_analysis/" + fastaname.split(".")[0] + ".out"
             CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -maxRL 45 -minRL 20 -minNR {1} -maxSL 45 -minSL 18 {2} {3}".format(bin_path,repeats,filein,result_file)
@@ -930,7 +936,7 @@ def get_loci(CRISPR_results,fastanames,affected_genomes={}):
                             curr_spacer_pos = int(lines[locus+2+spacer_counter].split("\t")[0]) + int(lines[locus+2+spacer_counter].split("\t")[4].split(" ")[1][:-1])
                             #Need to potentially adjust the current spacer position because of long strings of Ns in the genome
                             try:
-                                affected_lines = affected_genomes[genome[1]]
+                                affected_lines = affected_genomes[fastanames[genome[1][1]]]
                                 #Need to add the number of Ns removed upstream of the spacer position to its position value
                                 adjust_val = 0
                                 for line in affected_lines:
@@ -1054,9 +1060,7 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
                     fetch_handle = Entrez.efetch(db="nucleotide", rettype="gbwithparts", retmode="text", id=contig_Acc)
                     data = fetch_handle.read()                        
                     fetch_handle.close()
-                    print(genfile_name, "pickles")
                     if data != '':
-                        print('vinegar')
                         with open(genfile_name, 'w') as genfile:
                             genfile.write(data)
                     else:
@@ -1095,7 +1099,6 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
     else:
         skip = True
     if skip:
-        print('silly skipper')
         record = ''
         if os.path.isfile(genfile_name):
             os.remove(genfile_name) 
@@ -1226,7 +1229,7 @@ def locus_completeness_check(Type,proteins_identified):
         for proteins in complete_locus:
             found_it = False
             for check in proteins_identified:  #see if the list of proteins found align with what's known
-                if check in proteins:
+                if check.split()[0] in proteins:  #use the split to remove the pseudo tag if present
                     found_it = True
             if not found_it:
                 Cas_search.append(proteins[0])
@@ -1255,24 +1258,32 @@ def find_spacer_target(Acc_num_target,alt_alignment):
     #Find which gene is targeted by the spacer
     if type(record) is not str:
         self_targets = []
-        lagging_feature = ''
+        lagging_feature = ''; feature_num = ''; target_protein = ''
         for feature in record.features:
             if feature.type not in ('gene','source'):
-                if feature.location.start <= alt_alignment <= feature.location.end:
-                    feature_num, target_protein = grab_feature(feature)
+                feature_num, target_protein = grab_feature(feature)
+                if feature.location.start <= alt_alignment <= feature.location.end:  #This is the case where the self-target falls within a gene
                     target_protein = label_self_target(target_protein,feature_num)
                     self_targets.append([feature_num, target_protein])
                     break
-                elif feature.location.start > alt_alignment:   #The spacer is in between this feature and the previous
-                    feature_num1, target_protein1 = grab_feature(feature)
-                    target_protein1 = label_self_target(target_protein1,feature_num1)
-                    self_targets.append([feature_num1, target_protein1])
-                    
-                    feature_num2, target_protein2 = grab_feature(lagging_feature)
-                    target_protein2 = label_self_target(target_protein2,feature_num2)
-                    self_targets.append([feature_num2, target_protein2])
-                    break       
-            lagging_feature = feature   #Used to store first feature in case spacer falls in the middle of two genes                    
+                elif lagging_feature == '' and alt_alignment < feature.location.start:  #This is the case where the self-target is before any features    
+                    target_protein = label_self_target(target_protein,feature_num)
+                    self_targets.append(["upstream contig edge",""])
+                    self_targets.append([feature_num, target_protein])
+                    break
+                elif alt_alignment < feature.location.start:   #The spacer falls in between a gene and the next gene or the end of the contig
+                    target_protein = label_self_target(target_protein,feature_num)
+                    self_targets.append([feature_num, target_protein])
+                    self_targets.append([lagging_feature_num, lagging_target_protein])
+                    break
+                lagging_feature = feature
+                lagging_feature_num = feature_num #Used to store first feature in case spacer falls in the middle of two genes
+                lagging_target_protein = target_protein
+        else:  #will reach here if running off of the end of the contig
+            if len(record.features) > 0:
+                target_protein = label_self_target(target_protein,feature_num)
+                self_targets.append([feature_num, target_protein])
+                self_targets.append(["downstream contig edge",""])         
     else:
         self_targets = [["----No genbank file", "skipped----"]]    
     return self_targets               
@@ -1365,7 +1376,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,CDD=False):
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
-def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,bin_path,HMM_dir,CDD=False,repeats=4):   
+def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD=False,repeats=4):   
 
     #Determine whether the current contig (or genome) has already had it's locus checked
     global loci_checked
@@ -1374,9 +1385,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         contig_Acc = contig_Accs[Acc_num]
     else:
         contig_Acc = Acc_num
-            
-    print crispr, loci_checked
-    
+        
     #First check whether this array has been checked once before
     print("Analyzing self-targeting spacer found in {0}...".format(Acc_num_self_target))
     false_positive = False
@@ -1404,10 +1413,22 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                     #species = record.features[0].qualifiers["organism"][0]
                     #if genome_type == 'complete':
                     #    species += record.features[0].qualifiers["strain"][0]
-                
+                #Need to potentially adjust the align_locus because of long strings of Ns in the genome
+                try:
+                    affected_lines = affected_genomes[Acc_num]
+                    #Need to add the number of Ns removed upstream of the spacer position to its position value
+                    adjust_val = 0
+                    for line in affected_lines:
+                        if line[0] < align_locus:
+                            adjust_val += line[1]    
+                        else:
+                            break
+                    align_locus += adjust_val
+                except KeyError:
+                    pass
                 Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD) 
             else:
-                species = "Missing genbank formatted data"; Type_proteins = "-----"; proteins_identified = ['-----']; Cas_search = ['-----']; up_down = 0; types_list = []
+                species = "Missing genbank formatted data"; Type_proteins = "?"; proteins_identified = ['-----']; Cas_search = ['-----']; up_down = 0; types_list = []
             loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,proteins_identified,Cas_search] 
 
         #Going to figure out what the consensus repeat is and if there are mutations in it.
@@ -1451,23 +1472,22 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         spacers_align = AlignInfo.SummaryInfo(alignment)
         consensus_spacer = spacers_align.dumb_consensus()                 
         spacers_pssm = spacers_align.pos_specific_score_matrix(consensus_spacer, chars_to_ignore = ['N'])
-        
         #Now start at the beginning of the spacer consensus and step forward looking for overrepresented bases
-        if len(spacers) < 3:
+        if len(spacers) > 4:
             overrep_percent = 0.75 #This number represents what the cutoff is for indentifying mistakes in the repeats - heuristic
         else:
             overrep_percent = 1   #to prevent small arrays from getting caught when they happen to have similar spacers sequences
-        move_F_len = 0; move_R_len = 0; 
+        move_F_len = 0; move_R_len = 0; indexes = range(0,len(consensus_spacer)-2)
         for step_dir in (1, -1):
-            for i in range(0,len(consensus_spacer),step_dir):  #will step forward then backward to look for mischaracterized repeats
-                total_counts = 0
-                for base in ("A","T","G","C","-"):
-                    total_counts += spacers_pssm[i][base]  
-                    count_limit = overrep_percent * total_counts
-                    if round(count_limit) < count_limit:
-                        count_limit = round(count_limit) + 1
-                    else:
-                        count_limit = round(count_limit)
+            if step_dir == -1:
+                indexes.reverse()
+            for i in indexes:  #will step forward then backward to look for mischaracterized repeats -1 because the last nucleotide tends to be more variable
+                total_counts = sum(spacers_pssm[i].values())
+                count_limit = overrep_percent * total_counts
+                if round(count_limit) < count_limit:
+                    count_limit = round(count_limit) + 1
+                else:
+                    count_limit = round(count_limit)
                 strong_homology = False
                 for base in ("A","T","G","C"):
                     base_count = spacers_pssm[i][base]
@@ -1475,26 +1495,28 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                         if step_dir > 0:
                             move_F_len += 1
                         else:
+                            if move_R_len == 0:
+                                move_R_len += 1
                             move_R_len += 1
                         strong_homology = True
                         break
                 if not strong_homology:
                     break
-        
+                
         #Next, if either move statistic is greater than 0, remake the spacers and repeats lists with the correct sequences
         repeats_temp = []; i = 0
         for repeat in repeats:
             if i == 0: 
                 repeats_temp.append(repeat + spacers[i][:move_F_len])
             elif i < len(spacers): 
-                repeats_temp.append(spacers[i-1][len(repeat)-move_R_len:len(repeat)] + repeat + spacers[i][:move_F_len])
+                repeats_temp.append(spacers[i-1][len(spacers[i-1])-move_R_len-1:len(spacers[i-1])] + repeat + spacers[i][:move_F_len])
             else:
-                repeats_temp.append(spacers[i-1][len(repeat)-move_R_len:len(repeat)] + repeat)
+                repeats_temp.append(spacers[i-1][len(spacers[i-1])-move_R_len-1:len(spacers[i-1])] + repeat)
             i += 1
         repeats = repeats_temp
         spacers_temp = []
         for spaceri in spacers:
-            spacers_temp.append(spaceri[move_F_len:len(spaceri)-move_R_len])
+            spacers_temp.append(spaceri[move_F_len:len(spaceri)-move_R_len-1])
         spacers = spacers_temp
         
         #Do a check to see if it's false positive (direct repeat for example). If most of the spacers are now under the min length cutoff (from too much homology)
@@ -1510,7 +1532,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             #Adjust the known spacer 
             if move_F_len + abs(move_R_len) > 0 :
                 print("CRISPR array {0} in {1} detected by CRT found to be maligned, correcting...".format(spacer,Acc_num))
-                spacer_seq = spacer_seq[move_F_len:len(spacer_seq)-move_R_len]
+                spacer_seq = spacer_seq[move_F_len:len(spacer_seq)-move_R_len-1]
                 #Also adjust the alignment positions
                 align_locus = align_locus + move_F_len
                 alt_alignment = alt_alignment + move_F_len
@@ -1576,7 +1598,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             #Because CRISPR alignment will not allow for indels, assume that stuck in register of best alignment
             #In reality, one end or the other of the spacer will be more important, but the best alignment is not in the same register as the PAM/seed region, it probably can't bind anyway
             
-            print(target_subseq)
             expression1 = re.compile("Query_\d+")
             expression2 = re.compile("Subject_\d+")
             for line in output.split('\n'):
@@ -1599,8 +1620,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 subject_subseq = target_subseq[s_lower:len(target_subseq)]
             else:
                 subject_subseq = target_subseq[s_lower:s_upper]
-            print(spacer_seq)
-            print(subject_subseq, "bananas")
             
             #Then stepwise compare the strings for mismatches (check not perfect match first)
             letter_pos = 0; target_sequence = ''
@@ -1656,7 +1675,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             a = re.search(expression1, line)
             if a is not None: 
                 data_string = output.split('\n')[output.split('\n').index(line) + 2]  #Get the data from two lines below
-                print(data_string)
                 if data_string == "": #No hits found
                     break
                 repeat_group = data_string.strip().split()[3]  #The repeat group is the 4th position
@@ -1691,12 +1709,12 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 #Both predict multiple possible types, default to those predicted by the proteins
                 #extract the types predicted in Type_proteins
                 extra_details = "Cas proteins"
-            else:    #1 or more types predicted by the proteins 
+            elif Type_proteins != "?":
+                #1 or more types predicted by the proteins 
                 extra_details = "Cas proteins"
             if extra_details == "Cas proteins":
                 if Type_proteins == "?":
                     #determine if too many types or none to make a call
-                    print(types_list)
                     if types_list == []:
                         extra_details = "no predictions"  #Reset to default, since there is no way to predict a Cas type
                     else:
@@ -1708,7 +1726,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                         if "-" in string:
                             if string[-1] in (",", "?"):
                                 types_to_use.append(string[:-1])
-                            else:
+                            elif "-----" not in string:
                                 types_to_use.append(string)
             if extra_details != "no predictions":
                 #Now Check the possible types to see what the direction is (Note! presumed Type II-C will come out as backward)
@@ -1767,7 +1785,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                loci_checked[contig_Acc + "-" + str(crispr)] = ["Missing genbank formatted data","","","","",array_direction,false_positive]
         #Now search the genbank files to see what the self-targeting gene is and look up if hypothetical
         self_targets = find_spacer_target(Acc_num_self_target,alt_alignment)
-                                                                                                
+                                                                                                                                                                                       
         #Convert self-targeting information into a printable string
         if len(self_targets) == 1:
             self_target = ", ".join(self_targets[0])
@@ -1802,7 +1820,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
 
 def flip_mismatch_notation(sequence):
     
-    temp1 = sequence.reverse()
+    temp1 = sequence[::-1]
     temp2 = ''
     for base in temp1:
         if base == 'a':
@@ -1832,7 +1850,7 @@ def target_mutation_annotation(repeat_U, repeat_D):
 
     return repeat_mutations                            
 
-def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,bin_path,HMM_dir,CDD,repeats=4):
+def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats=4):
 
     #Next, search each genome sequence for each repeat sequence and determine if it shows up more than once (bypassed CRISPR)
     #Since the genomes, spacers, etc. are in the same order, look for the start lengths and filter out reads that were found from CRISPR search
@@ -1944,7 +1962,20 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                                                                     
                         if outside_loci:   #only keep alignments that don't match 
                             #Determine what the'PAM' sequence is after the non-locus alignment to report                                           
-                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,bin_path,HMM_dir,CDD,repeats)
+                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats)
+                            #Need to potentially adjust the alt_alignment variable because of long strings of Ns in the genome
+                            try:
+                                affected_lines = affected_genomes[Acc_num]
+                                #Need to add the number of Ns removed upstream of the spacer position to its position value
+                                adjust_val = 0
+                                for line in affected_lines:
+                                    if line[0] < alt_alignment:
+                                        adjust_val += line[1]    
+                                    else:
+                                        break
+                                alt_alignment += adjust_val
+                            except KeyError:
+                                pass
                             if not false_positive:
                                blast_results_filtered_summary.append([Acc_num_self_target,  #Accession # of sequence with position of spacer target outside of array
                                                                       Acc_num,              #Accession # of sequence with position of spacer within array 
@@ -2104,6 +2135,9 @@ def CDD_homology_search(check_list):
         try_count += 1
         short_names = []
         
+        if try_count > 10:
+            print("Trying to overcome issues with CDD speed/connectivity...")
+        
         for line in r.text.encode('utf-8').split("\n"):
             if line.find("cdsid") > -1:
                 cdsid = line.split("cdsid")[1].strip()  #Extract the cdsid number
@@ -2179,7 +2213,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
 
     #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
-    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,bin_path,HMM_dir,CDD,repeats)
+    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats)
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
     output_results(blast_results_filtered_summary,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
