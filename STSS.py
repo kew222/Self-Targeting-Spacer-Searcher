@@ -1282,8 +1282,9 @@ def find_spacer_target(Acc_num_target,alt_alignment):
         else:  #will reach here if running off of the end of the contig
             if len(record.features) > 0:
                 target_protein = label_self_target(target_protein,feature_num)
-                self_targets.append([feature_num, target_protein])
-                self_targets.append(["downstream contig edge",""])         
+                if feature_num != "":
+                    self_targets.append([feature_num, target_protein])
+                    self_targets.append(["downstream contig edge",""])         
     else:
         self_targets = [["----No genbank file", "skipped----"]]    
     return self_targets               
