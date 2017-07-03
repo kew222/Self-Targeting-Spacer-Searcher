@@ -75,7 +75,7 @@ Options
 loci_checked = {}
 
 def get_version():
-    return "0.2.0"
+    return "1.0.0"
 
 class Usage(Exception):
     def __init__(self,msg):
