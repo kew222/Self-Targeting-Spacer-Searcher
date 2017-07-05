@@ -2229,7 +2229,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
 
     return protein_list     
                                 
-def PHASTER_analysis(blast_results_filtered_summary,current_dir,in_islands_only=True,all_islands=False,skip_family_create=True):
+def PHASTER_analysis(blast_results_filtered_summary,current_dir):
 
     in_island = []
     not_in_island = []
@@ -2254,7 +2254,7 @@ def PHASTER_analysis(blast_results_filtered_summary,current_dir,in_islands_only=
             else:
                 os.remove(PHASTER_file)
         if skip_entry:   #if a PHASTER file wasn't found, do the search
-            lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir)  #first try a simple lookup with the the Acc number, post the sequence if it fails
+            lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False)  #first try a simple lookup with the the Acc number, post the sequence if it fails
             if skip_entry == True:   #If a simple Acc lookup didn't work, try POSTing genbank files
                 lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=True) 
         if skip_entry == False:
@@ -2331,7 +2331,7 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
                 lines = str(r3).split("\n")
                 skip_entry = False
                 break
-            except:
+            except KeyError:
                 try:
                     msg = str(r2[u'error']).strip()
                     print(msg + "\nError with PHASTER looking for {0}".format(Acc_to_print))
@@ -2339,7 +2339,7 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
                     lines = []
                     time.sleep(1)
                     return lines,skip_entry
-                except:
+                except KeyError:
                     msg = str(r2[u'status']).strip()
                     print("Waiting for PHASTER to analyze {0}... Status: ".format(Acc_to_print) + msg)
                     time.sleep(30)           #wait 30s before retrying 
