@@ -21,13 +21,14 @@ import re
 import httplib
 from collections import Counter
 from CRISPR_definitions import Cas_proteins, CRISPR_types, Cas_synonym_list, Repeat_families_to_types, Expected_array_directions
+from user_email import email_address
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio import AlignIO
 from Bio.Align import AlignInfo
 from Bio import Entrez
 from urllib2 import HTTPError  # for Python 2
-Entrez.email = "watters@berkeley.edu"
+Entrez.email = email_address
 
 bin_path = os.path.dirname(os.path.realpath(__file__)) + "/bin/"
 HMM_dir = "HMMs/"
@@ -2373,6 +2374,18 @@ def import_data(input_file):
               
     return imported_data
 
+def check_dependencies(current_dir):
+    #Will quickly check for:
+    dependencies = ['clustalo','blastn','HMMER']
+    
+    missing_dependencies = []
+    for dependent in dependencies:
+        if not os.path.isfile(current_dir + "bin/{0}".format(dependent)):
+            missing_dependencies.append(dependent)
+    if missing_dependencies != []:
+        print("Missing the following required binary(ies) in bin/ (must be named as listed): {0}".format(", ".join(missing_dependencies))) 
+        sys.exit()
+
 def main(argv=None):
     
     current_dir = os.getcwd()+'/'
@@ -2381,6 +2394,9 @@ def main(argv=None):
         if argv is None:
             argv = sys.argv
             args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,CDD = params.parse_options(argv)
+        
+        #Run a check to make sure binaries are present
+        check_dependencies(current_dir)
         
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
