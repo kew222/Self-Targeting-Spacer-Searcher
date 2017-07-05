@@ -30,6 +30,6 @@ setup(
 
     keywords='CRISPR self-targeting',
     py_modules=['STSS','CRISPR_definitions'],
-    install_requires=['requests','Bio'],
+    install_requires=['requests','biopython'],
     
 )      
