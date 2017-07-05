@@ -2384,7 +2384,7 @@ def main(argv=None):
         
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
-            in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(imported_data,current_dir,in_islands_only=True,all_islands=False)
+            in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(imported_data,current_dir)
             Export_results(in_island,not_in_island,unknown_islands)
         elif rerun_loci:     #Used to rerun the loci annotating code near the spacers found
             imported_data = import_data(spacer_rerun_file)
