@@ -2364,7 +2364,7 @@ def import_data(input_file):
             word_num = 0
             converted_line = []
             for word in line.strip().split('\t'):
-                if word_num in (8,9,10,11):    #These are the positions in the data (0 indexed) that should be integers
+                if word_num in (7,8,9,10):    #These are the positions in the data (0 indexed) that should be integers
                     converted_line.append(int(word))
                 else:
                     converted_line.append(word)
