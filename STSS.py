@@ -2220,7 +2220,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
     output_results(blast_results_filtered_summary,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
     
     if not skip_PHASTER:
-        in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(blast_results_filtered_summary,current_dir,in_islands_only,all_islands,skip_family_create)
+        in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(blast_results_filtered_summary,current_dir)
         Export_results(in_island,not_in_island,unknown_islands,contig_Accs,fastanames)
         print("PHASTER analysis complete.")
     else:
