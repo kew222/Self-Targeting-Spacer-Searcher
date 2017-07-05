@@ -5,7 +5,7 @@ from os import path
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
-with open(path.join(here, 'README'), encoding='utf-8') as f:
+with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
@@ -18,7 +18,6 @@ setup(
     author_email='watters@berkeley.edu',
     license='GNU GPLv3',
 
-    # See https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Science/Research',
@@ -29,7 +28,7 @@ setup(
         ],
 
     keywords='CRISPR self-targeting',
-    py_modules=['STSS','CRISPR_definitions'],
+    py_modules=['STSS','CRISPR_definitions','user_email'],
     install_requires=['requests','biopython'],
     
-)      
+    )      
