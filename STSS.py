@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-#STSS (Self-Targeting Spacer Search tool). This code takes a archaeal/bacterial strain and searches for incorporated phage islands and checks for a working
+#STSS (Self-Targeting Spacer Searcher). This code takes a archaeal/bacterial strain and searches for incorporated phage islands and checks for a working
 #CRISPR system to identify self-targeting spacers
 #Returns a list of potential hits
 

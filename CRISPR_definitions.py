@@ -23,7 +23,7 @@ CRISPR_types = {
                 "Type I-U":[["Cas3"],["Cas8c"],["Cas7"],["Cas5","GSU0054"],["Cas6"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
                 "Type I-D":[["Cas3'"],["Cas3''"],["Cas10d","Csc3"],["Cas7","Csc2"],["Cas5","Csc1"],["Cas6"],["Cas4"],["Cas1"],["Cas2"]],
                 "Type I-E":[["Cas3"],["Cas8e","Cse1"],["Cse2","CasB"],["Cas7","Cse4","CasC"],["Cas5","CasD"],["Cas6","Cse3","CasE"],["Cas1"],["Cas2"]],
-                "Type I-F":[["Cas1"],["Cas2"],["Cas3"],["Cas8f","Csy1"],["Cas5","Csy2"],["Cas7","Csy3"],["Cas6f","Csy4"]],
+                "Type I-F":[["Cas1"],["Cas2","Cas3"],["Cas8f","Csy1"],["Cas5","Csy2"],["Cas7","Csy3"],["Cas6f","Csy4"]],
                 "Type I-G":[["Cas6"],["Cas8a1","Cst1"],["Cas7","Cst2"],["Cas5","Cas5t"],["Cas3"],["Cas4"],["Cas1"],["Cas2"]],
                 
                 "Type II-A":[["Cas9","Csn1"],["Cas1"],["Cas2"],["Csn2"]],

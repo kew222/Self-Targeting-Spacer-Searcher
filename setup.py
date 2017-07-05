@@ -29,7 +29,7 @@ setup(
         ],
 
     keywords='CRISPR self-targeting',
-    packages=['STSS','CRISPR_definitions'],
+    py_modules=['STSS','CRISPR_definitions'],
     install_requires=['requests','Bio'],
     
 )      
