@@ -144,7 +144,7 @@ class Params:
             if option in ("-E", "--E-value"):
                 E_value_limit = float(value)      
             if option in ("-o","--prefix"):
-                prefix = value
+                prefix = value + "_"
             if option == "--dir":
                 provided_dir = str(value) + "/"      
             if option == "--search":
@@ -1974,16 +1974,16 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
 def Export_results(in_island,not_in_island,unknown_islands,prefix,contig_Accs={},fastanames={}):
 
     #Export blast results that are in islands to a separate file 
-    output_results(in_island,contig_Accs,fastanames,"{0}Spacers_inside_islands.txt".format(prefix+"_"))
+    output_results(in_island,contig_Accs,fastanames,"{0}Spacers_inside_islands.txt".format(prefix))
                                             
     #Export blast results that aren't in islands to a separate file 
-    output_results(not_in_island,contig_Accs,fastanames,"{0}Spacers_outside_islands.txt".format(prefix+"_"))
+    output_results(not_in_island,contig_Accs,fastanames,"{0}Spacers_outside_islands.txt".format(prefix))
             
     if unknown_islands != []:
         #Export blast results that aren't analyzed with PHASTER into a last file
-        output_results(unknown_islands,contig_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix+"_"))
-    elif os.path.exists("{0}Spacers_no_PHASTER_analysis.txt".format(prefix+"_")):   #deletes the temporary file
-        os.remove("{0}Spacers_no_PHASTER_analysis.txt".format(prefix+"_"))
+        output_results(unknown_islands,contig_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
+    elif os.path.exists("{0}Spacers_no_PHASTER_analysis.txt".format(prefix)):   #deletes the temporary file
+        os.remove("{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
     
 def output_results(results,replacement_dict,fastanames,filename):
     #Export results to a separate file 
@@ -2180,7 +2180,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_l
     blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats)
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
-    output_results(blast_results_filtered_summary,contig_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix+"_"))
+    output_results(blast_results_filtered_summary,contig_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
     
     if not skip_PHASTER:
         in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(blast_results_filtered_summary,current_dir)
@@ -2203,10 +2203,10 @@ def PHASTER_analysis(blast_results_filtered_summary,current_dir):
     print("Running PHASTER analysis...")
     if not os.path.exists("PHASTER_analysis"):
         os.mkdir("PHASTER_analysis")
-    skip_entry = True
     for potential_hit in blast_results_filtered_summary:
+        skip_entry = True
         #First determine if the analysis has been done before
-        Acc_to_search = potential_hit[0]  #If WGS, use the contig itself to search                        
+        Acc_to_search = potential_hit[0]  #If WGS, use the contig itself to search    
         PHASTER_file = current_dir+"PHASTER_analysis/" + Acc_to_search.split(".")[0] + ".txt"
         if os.path.isfile(PHASTER_file):
             #If it has, just load the results
@@ -2220,7 +2220,7 @@ def PHASTER_analysis(blast_results_filtered_summary,current_dir):
             lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False)  #first try a simple lookup with the the Acc number, post the sequence if it fails
             if skip_entry == True:   #If a simple Acc lookup didn't work, try POSTing genbank files
                 lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=True) 
-        if skip_entry == False:
+        if not skip_entry:
             record = False
             region = 0
             found_island = False
@@ -2234,21 +2234,20 @@ def PHASTER_analysis(blast_results_filtered_summary,current_dir):
                         island_end = int(results[4].split("-")[1])
                         spacer_pos = potential_hit[9]
                         temp = potential_hit
-                        if island_start <= spacer_pos <= island_end-len(potential_hit[11]):  #check to see if in an island
+                        if island_start <= spacer_pos <= island_end:  #check to see if in an island
                             found_island = True
                             temp = potential_hit[:-1] + [region]  #replace 'N/A' in PHASTER island with the island number
+                            break
                     elif region == 1 and results == []:
                         temp = potential_hit[:-1] + ["none identified"]   #replace 'N/A' in PHASTER island if no islands are found   
                     elif region > 1 and not found_island:  
                         temp = potential_hit[:-1] + ["outside island(s)"]   #replace 'N/A' in PHASTER island if spacer found outside all the islands   
-                    if found_island:
-                        break #exit the outer loop, found it
                 elif line.strip()[-4:] == "----":
                     record = True
-            if not found_island:   #put into categories based on whether it was in an island
-                not_in_island.append(temp)
-            else:
+            if found_island:   #put into categories based on whether it was in an island
                 in_island.append(temp)
+            else:
+                not_in_island.append(temp)
         else: 
             print("Skipping analysis of {0}".format(Acc_to_search))
             unknown_islands.append(potential_hit)
