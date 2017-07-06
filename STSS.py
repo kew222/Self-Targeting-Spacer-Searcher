@@ -51,18 +51,16 @@ Options
 --dir <directory>               Use directory of genomes (fasta-formatted) instead of searching NCBI
 --search <"NCBI search term">   Use NCBI nucleotide database to find genomes
 --Accs <Assembly_list_file>     Search genomes based on a given list of assemblies (incompatible with search)
+-o, --prefix <string>           Prefix for filenames in output (ex. prefix of 'bagel' gives: bagel_Spacers...islands.txt)
 -f, --force-redownload          Forces redownloading of genomes that were already downloaded
 -n, --no-ask                    Force downloading of genomes regardless of number found (default: ask)
--l, --limit <N>                 Limit Entrez search to the first N results found (default: 1000)
+-l, --limit <N>                 Limit Entrez search to the first N results found (default: 10000)
 --CDD                           Use the Conserved Domain Database to identify Cas proteins (default is to use HMMs)
 --complete-only                 Only return complete genomes from NCBI
 --rerun-loci <filename>         Rerun the locus annotater to recheck the nearby locus for Type and completeness from provided sapcer search results file                   
 -E, --E-value  <N>              Upper limit of E-value to accept BLAST results as protein family (default: 1e-4)
 --percent-reject <N>            Percentage (of 100%) to use a cutoff from the average spacer length to reject validity of a proposed locus (default 25%)
                                 Lower values are more stringent
---all-islands                   Include all unknown proteins found within a predicted MGE
---outside-islands               Include proteins from predicted MGEs when the spacer is outside a predicted MGE island
-                                (automatically includes --all-islands option)
 -s, --spacers <N>               Number of spacers needed to declare a CRISPR locus (default: 3)
 --pad-locus <N>                 Include a buffer around a potential locus to prevent missed repeats from
                                 appearing as hits (default: 100)
@@ -89,21 +87,18 @@ class Params:
     
     def parse_options(self, argv):
         try:
-            opts, args = getopt.getopt(argv[1:], "hvE:l:s:fp:cnd:",
+            opts, args = getopt.getopt(argv[1:], "hvE:l:s:fp:cnd:o:",
                                        ["limit=",
                                        "dir=",
                                        "search=",
                                        "Accs=",
                                        "help",
-                                       "all-islands",
+                                       "prefix=",
                                        "outside-islands",
                                        "rerun-loci=",
                                        "E-value=",
                                        "spacers=",
                                        "NCBI",
-                                       "skip-family-search",
-                                       "families-limit=",
-                                       "cluster-search",
                                        "pad-locus=",
                                        "Cas-gene-distance=",
                                        "no-ask",
@@ -112,7 +107,6 @@ class Params:
                                        "complete-only",
                                        "skip-PHASTER",
                                        "rerun-PHASTER=",
-                                       "align-families",
                                        "CDD",
                                        "version"])
         
@@ -125,13 +119,8 @@ class Params:
         search = ''
         Accs_input = ''
         rerun_loci = False
-        all_islands = False
-        in_islands_only = True
         repeats = 4
-        skip_family_search = False
-        families_limit = 300
         pad_locus = 100
-        skip_family_create = True
         complete_only = False
         skip_PHASTER = False
         rerun_PHASTER = False
@@ -142,6 +131,7 @@ class Params:
         ask = True
         CDD = False
         Cas_gene_distance = 20000
+        prefix = ''
         
         for option, value in opts:
             if option in ("-v", "--version"):
@@ -153,32 +143,23 @@ class Params:
                 num_limit = int(value)   
             if option in ("-E", "--E-value"):
                 E_value_limit = float(value)      
+            if option in ("-o","--prefix"):
+                prefix = value
             if option == "--dir":
                 provided_dir = str(value) + "/"      
             if option == "--search":
                 search = value  
-            if option == "--all-islands":
-                all_islands = True
             if option == "--Accs":
                 Accs_input = value
             if option == "--rerun-loci":
                 rerun_loci = True
                 spacer_rerun_file = value
-            if option == "--outside-islands":
-                in_islands_only = False  
-                all_islands = True
             if option in ("-s","--spacers"):
                 repeats = int(value) + 1
-            if option == "--skip-family-search":
-                skip_family_search = True
-            if option == "--families-limit":
-                families_limit = int(value)   
             if option == "--pad-locus":
                 pad_locus = int(value) 
             if option == "--CDD":
                 CDD = True
-            if option in ('-c',"--cluster-search"):
-                skip_family_create = False 
             if option in ('-d',"--Cas-gene-distance"):
                 Cas_gene_distance = int(value) 
             if option == "--complete-only":
@@ -189,9 +170,6 @@ class Params:
                 spacer_rerun_file = value
                 rerun_PHASTER = True
                 skip_PHASTER = False
-                skip_family_create = True
-            if option == '--align_families':
-                skip_alignment = False
             if option == "--percent-reject":
                 percent_reject = int(value)    
             if option in ("-f","--force-redownload"):
@@ -209,7 +187,7 @@ class Params:
             print("Search and Accession# input are not compatible, please select one.\n") 
             raise Usage(help_message)    
                             
-        return args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,CDD
+        return args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD
 
 def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
     
@@ -228,7 +206,7 @@ def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
             return False         
     return True
 
-def print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,repeats,percent_reject,skip_PHASTER,all_islands,in_islands_only,skip_family_create,skip_family_search,families_limit):
+def print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,repeats,percent_reject,skip_PHASTER):
 
     #Output the search parameters
     with open("Search_parameters.txt","w") as search_params:
@@ -247,17 +225,7 @@ def print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_li
         search_params.write("Minimum adherence to average spacer length:\t{0}\n".format(str(100-percent_reject)+"%"))
         if skip_PHASTER:
             search_params.write("PHASTER analysis skipped.\n")
-        if all_islands and not skip_PHASTER:
-            search_params.write("All proteins from MGEs included.\n")    
-        if in_islands_only and not skip_PHASTER:
-            search_params.write("Only mining proteins when spacers are within MGEs.\n")
-        elif skip_family_create and not skip_PHASTER:
-            search_params.write("No families created from list of potential proteins.\n")
-        elif skip_family_search and not skip_PHASTER:
-            search_params.write("No family BLAST against NCBI database performed.\n")
-        else:
-            search_params.write("Number of families limited to:\t{0}\n".format(families_limit))
-
+        
 def load_provided(provided_dir,num_limit,complete_only):
 
     provided_WGS_counter = 0 
@@ -815,8 +783,6 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     for fastaname, holder in fastanames.iteritems():
         good_genome = True
         filein = holder[0]
-        if current_dir in filein:
-            filein = filein.split(current_dir)[1]  #These lines are only for my local because of the Dropbox formatting problem
         if not os.path.exists("CRISPR_analysis"):
             os.mkdir("CRISPR_analysis")
         #Check that the genome file has data in it
@@ -987,10 +953,6 @@ def spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_
         with open(queryfilename, "w") as queryfile:
             for line in temp_lines:
                 queryfile.write(line)
-        if current_dir in queryfilename:
-            queryfilename = queryfilename.split(current_dir)[1]  #These lines are only for my local because of the Dropbox formatting problem
-        if current_dir in subject:
-            subject = subject.split(current_dir)[1]  #These lines are only for my local because of the Dropbox formatting problem
         blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt 6 -evalue {3}".format(bin_path,queryfilename,subject,E_value_limit)
         handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = handle.communicate()
@@ -2009,19 +1971,19 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
 
     return blast_results_filtered_summary,contig_Accs
 
-def Export_results(in_island,not_in_island,unknown_islands,contig_Accs={},fastanames={}):
+def Export_results(in_island,not_in_island,unknown_islands,prefix,contig_Accs={},fastanames={}):
 
     #Export blast results that are in islands to a separate file 
-    output_results(in_island,contig_Accs,fastanames,"Spacers_inside_islands.txt")
+    output_results(in_island,contig_Accs,fastanames,"{0}Spacers_inside_islands.txt".format(prefix+"_"))
                                             
     #Export blast results that aren't in islands to a separate file 
-    output_results(not_in_island,contig_Accs,fastanames,"Spacers_outside_islands.txt")
+    output_results(not_in_island,contig_Accs,fastanames,"{0}Spacers_outside_islands.txt".format(prefix+"_"))
             
     if unknown_islands != []:
         #Export blast results that aren't analyzed with PHASTER into a last file
-        output_results(unknown_islands,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
-    elif os.path.exists("Spacers_no_PHASTER_analysis.txt"):   #deletes the temporary file
-        os.remove("Spacers_no_PHASTER_analysis.txt")
+        output_results(unknown_islands,contig_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix+"_"))
+    elif os.path.exists("{0}Spacers_no_PHASTER_analysis.txt".format(prefix+"_")):   #deletes the temporary file
+        os.remove("{0}Spacers_no_PHASTER_analysis.txt".format(prefix+"_"))
     
 def output_results(results,replacement_dict,fastanames,filename):
     #Export results to a separate file 
@@ -2185,13 +2147,13 @@ def label_self_target(target_protein,feature_num):
    
     return target_protein
 
-def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_dir,Cas_gene_distance,HMM_dir,CDD=False,ask=False):
+def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,prefix,CDD=False,ask=False):
 
     if num_limit == 0:
         num_limit = default_limit        
     
     #Creates a report of the search parameters
-    print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,repeats,percent_reject,skip_PHASTER,all_islands,in_islands_only,skip_family_create,skip_family_search,families_limit)
+    print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,repeats,percent_reject,skip_PHASTER)
     
     #Fetch the fasta files in the provided directory
     if provided_dir != '':
@@ -2218,11 +2180,11 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,i
     blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats)
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
-    output_results(blast_results_filtered_summary,contig_Accs,fastanames,"Spacers_no_PHASTER_analysis.txt")
+    output_results(blast_results_filtered_summary,contig_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix+"_"))
     
     if not skip_PHASTER:
         in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(blast_results_filtered_summary,current_dir)
-        Export_results(in_island,not_in_island,unknown_islands,contig_Accs,fastanames)
+        Export_results(in_island,not_in_island,unknown_islands,prefix,contig_Accs,fastanames)
         print("PHASTER analysis complete.")
     else:
         protein_list = []
@@ -2376,14 +2338,14 @@ def import_data(input_file):
 
 def check_dependencies(current_dir):
     #Will quickly check for:
-    dependencies = ['clustalo','blastn','HMMER']
+    dependencies = ['clustalo','blastn','nhmmscan','hmmscan']
     
     missing_dependencies = []
     for dependent in dependencies:
         if not os.path.isfile(current_dir + "bin/{0}".format(dependent)):
             missing_dependencies.append(dependent)
     if missing_dependencies != []:
-        print("Missing the following required binary(ies) in bin/ (must be named as listed): {0}".format(", ".join(missing_dependencies))) 
+        print("Missing the following required binary(ies) in bin/ (must be named as listed): {0}".format(", ".join(missing_dependencies)))
         sys.exit()
 
 def main(argv=None):
@@ -2393,7 +2355,7 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,CDD = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD = params.parse_options(argv)
         
         #Run a check to make sure binaries are present
         check_dependencies(current_dir)
@@ -2401,15 +2363,16 @@ def main(argv=None):
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
             in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(imported_data,current_dir)
-            Export_results(in_island,not_in_island,unknown_islands)
+            Export_results(in_island,not_in_island,unknown_islands,prefix)
         elif rerun_loci:     #Used to rerun the loci annotating code near the spacers found
             imported_data = import_data(spacer_rerun_file)
             re_analyzed_data  = locus_re_annotator(imported_data,Cas_gene_distance,CDD)
             output_results(re_analyzed_data,{},{},"Spacer_data_loci_re-analyzed.txt")   #Quickly re-generate the re-analyzed data.          
         else:
             #Identify genomes that contain self-targeting spacers     
-            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,CDD,ask)
-                        
+            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,prefix,CDD,ask)
+            #protein_list is a placeholder for potential future development  
+                                  
     except Usage, err:
         print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
         print >> sys.stderr, ""
