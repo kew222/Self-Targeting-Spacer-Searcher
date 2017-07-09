@@ -336,7 +336,7 @@ def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,
         attempt_num = 1
         while True:
             try:
-                handle3 = Entrez.elink(dbfrom='assembly', db='nuccore', id=assemblies_chunk, retmax=100000)
+                handle3 = Entrez.elink(dbfrom='assembly', db='nuccore', id=assemblies_chunk, retmax=num_limit)
                 record3 = Entrez.read(handle3)
                 handle3.close()
                 time.sleep(0.35)  #Delay to prevent server abuse
@@ -511,7 +511,7 @@ def search_NCBI_genomes(search,num_limit,complete_only):
     #Link genomes found to assemblies 
     assemblies = link_genome_to_assembly(genomes,num_limit,[])
     #Link assemblies found to nucleotide records  
-    found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],simple_return=False)
+    found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes = link_assembly_to_nucleotide(assemblies,num_limit,complete_only,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],simple_return=False)
 
     return found_complete,found_WGS,total,complete_IDs,WGS_IDs,wgs_master_GIs,num_genomes
 
