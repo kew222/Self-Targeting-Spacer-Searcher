@@ -1126,8 +1126,10 @@ def find_Cas_proteins(align_pos,record,HMM_dir,CDD=False,Cas_gene_distance=20000
                             if CDD:
                                 check_list.append(protein_num)
                             else:
-                                check_list.append(protein_num)
-                                check_aa.append(str(feature.extract(record).seq.translate(to_stop=True)))  #Add the protein sequence
+                                aa = str(feature.extract(record).seq.translate(to_stop=True))
+                                if aa != "":
+                                    check_list.append(protein_num)
+                                    check_aa.append(aa)  #Add the protein sequence
                 except KeyError:
                     pass  #skip CDS annotations with no id or content
     
