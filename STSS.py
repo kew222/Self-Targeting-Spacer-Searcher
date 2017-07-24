@@ -257,7 +257,7 @@ def load_provided(provided_dir,num_limit,complete_only):
                     fastanames[name] = [it, "provided", "WGS"]
                     provided_WGS_counter += 1
                 except:                   
-                    print("File {0} is doesn't seem to be formatted properly. Skipping.".format(it))
+                    print("File {0} doesn't seem to be formatted properly. Skipping.".format(it))
         except:
             raise
     text2 =  " to analyze for self-targeting."
@@ -1104,8 +1104,10 @@ def find_Cas_proteins(align_pos,record,HMM_dir,CDD=False,Cas_gene_distance=20000
                         if CDD:
                             check_list.append(protein_num)
                         else:
-                            check_list.append(protein_num)
-                            check_aa.append(str(feature.extract(record).seq.translate(to_stop=True)))  #Add the protein sequence
+                            aa = str(feature.extract(record).seq.translate(to_stop=True))
+                            if aa != "":
+                                check_list.append(protein_num)
+                                check_aa.append(aa)  #Add the protein sequence
                     else:
                         #See if protein identified as Cas protein
                         is_Cas, protein_name, types_list = is_known_Cas_protein(product,types_list)

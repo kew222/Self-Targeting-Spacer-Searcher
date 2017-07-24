@@ -10,7 +10,6 @@
 
 import getopt
 import sys, os
-import re
 from STSS import link_nucleotide_to_assembly, link_assembly_to_nucleotide, query_PHASTER, get_Accs
 from Bio import Entrez
 
@@ -133,6 +132,8 @@ def main(argv=None):
                         lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False)
                     if not skip_entry:
                         results = parse_PHASTER(lines,Acc_to_search,results)
+                    else:
+                        results = []
             all_Acc_results[Acc_num] = results
         
         output_results(all_Acc_results)                                    
