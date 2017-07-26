@@ -1264,10 +1264,8 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=
         
         #First, look up the assembly that the locus containing contig is in
         genomes = NCBI_search(contig_Acc,"nucleotide",num_limit=100000,tag="",exclude_term="")
-        print(contig_Acc)
         assemblies=[]
         assemblies = link_nucleotide_to_assembly(genomes,assemblies,num_limit=100000) 
-        print(assemblies)
         contig_GIs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[])
         genome_Accs = get_Accs(contig_GIs[0])
         
@@ -2070,7 +2068,10 @@ def HMM_Cas_protein_search(check_list,check_aa,bin_path='.',HMM_dir='.'):
     short_names = []
     for line in lines:
         if line[0] != "#":   #All lines that aren't data are marked with a hash sign
-            short_names.append(line.split()[2] + "\t" + line.split()[0])
+            try:
+                short_names.append(line.split()[2] + "\t" + line.split()[0])
+            except IndexError:
+                pass
     
     return short_names
 
