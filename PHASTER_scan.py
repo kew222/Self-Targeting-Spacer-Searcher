@@ -110,11 +110,11 @@ def main(argv=None):
         for Acc_num in Acc_nums:
             #First link to assembly
             print("Finding assembly for {0}...".format(Acc_num))
-            assemblies = link_nucleotide_to_assembly([Acc_num])
+            assemblies = link_nucleotide_to_assembly([Acc_num],assemblies=[])
             
             #Link back to nucleotide
             print("Finding contig Accs {0}'s assembly...".format(Acc_num))
-            IDs = link_assembly_to_nucleotide(assemblies)
+            IDs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],simple_return=True)
             
             print("Searching for prophages with PHASTER for contigs in {0}'s parent assembly...".format(Acc_num))
             for ID_set in IDs:
@@ -123,6 +123,7 @@ def main(argv=None):
                 results = []
                 #Run Phaster searches iteratively
                 for Acc_to_search in Accs:
+                    lines = []
                     PHASTER_file = current_dir+"PHASTER_analysis/" + Acc_to_search.split(".")[0] + ".txt"
                     try:
                         with open(PHASTER_file,'rU') as file1:
@@ -132,8 +133,6 @@ def main(argv=None):
                         lines,skip_entry = query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False)
                     if not skip_entry:
                         results = parse_PHASTER(lines,Acc_to_search,results)
-                    else:
-                        results = []
             all_Acc_results[Acc_num] = results
         
         output_results(all_Acc_results)                                    
