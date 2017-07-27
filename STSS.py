@@ -777,7 +777,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     genomes_searched = []
     bad_genomes = []
     affected_genomes = {}
-    Ns = "N"*500
+    Ns = "N"*400
     if os.path.isfile("genomes_with_long_stretches_of_Ns.txt"):
         os.remove("genomes_with_long_stretches_of_Ns.txt")
     for fastaname, holder in fastanames.iteritems():
@@ -815,17 +815,18 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
                     affected_lines.append([abs_pos+Ns_position_orig,pos_adjust])  #will store where the replacements are occuring  
                 abs_pos += len(lines[line_no])
                 line_no += 1
-            mod_dir = "/".join(filein.split("/")[:-1])+"/edited_fastas/"
-            mod_file = mod_dir + filein.split("/")[1][:-6]+"_Ns_removed.fasta"
-            if not os.path.exists(mod_dir):
-                os.mkdir(mod_dir)
-            with open(mod_file, 'w') as file1:
-                for a in lines:
-                    file1.write(a) 
-            fastanames[fastaname] = [mod_file] + holder[1:]
-            filein = mod_file
-            #Store the affected_lines in this fastaname as a dictionary
-            affected_genomes[fastaname] = affected_lines
+            if affected_lines != []:
+                mod_dir = "/".join(filein.split("/")[:-1])+"/edited_fastas/"
+                mod_file = mod_dir + "".join(filein.split("/")[1].split(".")[:-1])+"_Ns_removed.fasta"
+                if not os.path.exists(mod_dir):
+                    os.mkdir(mod_dir)
+                with open(mod_file, 'w') as file1:
+                    for a in lines:
+                        file1.write(a) 
+                fastanames[fastaname] = [mod_file] + holder[1:]
+                filein = mod_file
+                #Store the affected_lines in this fastaname as a dictionary
+                affected_genomes[fastaname] = affected_lines
             
         if good_genome:     
             result_file = "CRISPR_analysis/" + fastaname.split(".")[0] + ".out"
