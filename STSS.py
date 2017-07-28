@@ -33,6 +33,9 @@ Entrez.email = email_address
 bin_path = os.path.dirname(os.path.realpath(__file__)) + "/bin/"
 HMM_dir = "HMMs/"
 
+if not os.path.exists('temp'):
+    os.mkdir('temp')
+    
 help_message = '''
 STSS (Self-Targeting Spacer Search tool)
 ------------------------------------------
@@ -1432,8 +1435,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         for spaceri in spacers:
             fasta_string += '>{0}\n{1}\n'.format(i,spaceri)
             i += 1
-        if not os.path.exists('temp'):
-            os.mkdir('temp')
         clustal_cmd = "{0}clustalo -i - --force --outfmt=clustal -o temp/align_temp_spacer_output.aln".format(bin_path)      
         handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = handle.communicate(input=fasta_string)                        
