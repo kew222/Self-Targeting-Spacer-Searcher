@@ -1267,11 +1267,18 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=
         #will need to determine what all of the genbank files are, download them and search all of them for Cas genes
         
         #First, look up the assembly that the locus containing contig is in
-        genomes = NCBI_search(contig_Acc,"nucleotide",num_limit=100000,tag="",exclude_term="")
-        assemblies=[]
-        assemblies = link_nucleotide_to_assembly(genomes,assemblies,num_limit=100000) 
-        contig_GIs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[])
-        genome_Accs = get_Accs(contig_GIs[0])
+        while True:
+            genomes = NCBI_search(contig_Acc,"nucleotide",num_limit=100000,tag="",exclude_term="")
+            assemblies = []
+            assemblies = link_nucleotide_to_assembly(genomes,assemblies,num_limit=100000) 
+            contig_GIs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[])
+            print(contig_GIs)
+            try:
+                genome_Accs = get_Accs(contig_GIs[0])
+                break
+            except IndexError:  #these errors occasionally appear (from incomplete searches that get returned?)
+                print("Error looking up GenBank files for contigs from {0}'s assembly.".format(contig_Acc))
+                time.sleep(3)
         
         all_proteins_identified = []; all_types_list = []; total_up_down = 0
         for genome_Acc in genome_Accs:
