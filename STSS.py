@@ -780,7 +780,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
     genomes_searched = []
     bad_genomes = []
     affected_genomes = {}
-    Ns = "N"*400
+    Ns = "N"*500
     if os.path.isfile("genomes_with_long_stretches_of_Ns.txt"):
         os.remove("genomes_with_long_stretches_of_Ns.txt")
     for fastaname, holder in fastanames.iteritems():
@@ -1272,7 +1272,6 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=
             assemblies = []
             assemblies = link_nucleotide_to_assembly(genomes,assemblies,num_limit=100000) 
             contig_GIs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[])
-            print(contig_GIs)
             try:
                 genome_Accs = get_Accs(contig_GIs[0])
                 break
@@ -1869,7 +1868,11 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                 for x in spacer_data:
                     if x[0][0] == Acc_num:
                         #Check that the spacer is not occurring in one of the loci that was predicted
-                        align_locus = x[crispr][spacer][1] #Position of CRISPR spacer in locus
+                        try:
+                            align_locus = x[crispr][spacer][1] #Position of CRISPR spacer in locus
+                        except:
+                            print(align_locus)
+                            print(x)
                         if genome_type == 'complete':
                             for locus in range(1,len(x)):
                                 locus_range = [int(y) for y in x[locus][0].split("Range: ")[1].strip().split(" - ")]
