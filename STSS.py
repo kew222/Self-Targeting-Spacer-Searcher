@@ -1031,7 +1031,9 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
                         with open(genfile_name, 'w') as genfile:
                             genfile.write(data)
                     else:
-                        skip = True
+                        if attempt == 3:
+                            print('No data in Genbank file for contig {0} Skipping...'.format(contig_Acc))
+                            skip = True
                 break
             except httplib.IncompleteRead:
                 if attempt == 3:
@@ -1066,9 +1068,11 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
     else:
         skip = True
     if skip:
-        record = ''
+        record = SeqIO.SeqRecord(Seq(""),
+                   id="Missing Data", name="Missing Data",
+                   description="Missing Data")
         if os.path.isfile(genfile_name):
-            os.remove(genfile_name) 
+            os.remove(genfile_name)
     else:     
         record = SeqIO.read(genfile_name, 'genbank')
     return record    
@@ -1283,7 +1287,10 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=
         for genome_Acc in genome_Accs:
             contig_filename = genome_Acc.split(".")[0] + ".gb"
             if os.path.isfile("GenBank_files/{0}.gb".format(contig_filename)):
-                record = SeqIO.read(contig_filename, 'genbank')
+                try:
+                    record = SeqIO.read(contig_filename, 'genbank')
+                except AttributeError:
+                    record = download_genbank(genome_Acc)
             else:
                 record = download_genbank(genome_Acc)
             print("Checking {0} contig for Cas proteins...".format(genome_Acc))
@@ -1381,6 +1388,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             
         if need_locus_info:
             #Download the genbank file
+            
             record = download_genbank(contig_Acc)
             if type(record) is not str:
                 #Get the species name
