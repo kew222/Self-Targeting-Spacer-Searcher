@@ -351,13 +351,10 @@ def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,
                     print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1  
             except HTTPError as err:
-                if 500 <= err.code <= 599:
-                    print("Received error from server %s" % err)
-                    print("Attempt %i of 3" % attempt_num)
-                    attempt_num += 1
-                    time.sleep(15)
-                else:
-                    raise 
+                print("Received error from server %s" % err)
+                print("Attempt %i of 3" % attempt_num)
+                attempt_num += 1
+                time.sleep(15)
             except RuntimeError:
                 #NCBI probably closed the connection early, happens with poor internet connections
                 if attempt_num == 3:
@@ -552,8 +549,13 @@ def get_Accs(IDs):
                 if Id.strip() != "":
                     Accs.append(Id.strip())          
             handle.close()
+            break
         except:
-            attempt += 1
+            if attempt < 4:
+                attempt += 1
+            else:
+                raise
+        
     return Accs
          
 def download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],fastanames={},ask=False):
