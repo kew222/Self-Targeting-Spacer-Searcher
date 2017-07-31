@@ -31,8 +31,7 @@ from urllib2 import HTTPError  # for Python 2
 Entrez.email = email_address
 
 bin_path = os.path.dirname(os.path.realpath(__file__)) + "/bin/"
-HMM_dir = "HMMs/"
-
+HMM_dir = os.path.dirname(os.path.realpath(__file__)) + "/HMMs/"
 if not os.path.exists('temp'):
     os.mkdir('temp')
     
@@ -1043,7 +1042,7 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
                 else:
                     print("httplib.IncompleteRead error at Genbank data fetch. Attempt #{0}. Retrying...".format(attempt))
             except HTTPError as err:
-                if 500 <= err.code <= 599:
+                if err.code != 400 :
                     print("Received error from server %s" % err)
                     print("Attempt %i of 3" % attempt)
                     attempt += 1
@@ -1053,8 +1052,6 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
                     bad_gb_links.append(contig_Acc)
                     skip = True
                     break
-                else:
-                    raise
             except ValueError as err:   #occurs when no records in a downloaded 
                 print("WARNING!: {0} - no data, skipping analysis of this target...".format(err.message))
                 bad_gb_links.append(contig_Acc)
@@ -2362,13 +2359,13 @@ def import_data(input_file):
               
     return imported_data
 
-def check_dependencies(current_dir):
+def check_dependencies():
     #Will quickly check for:
     dependencies = ['clustalo','blastn','nhmmscan','hmmscan']
     
     missing_dependencies = []
     for dependent in dependencies:
-        if not os.path.isfile(current_dir + "bin/{0}".format(dependent)):
+        if not os.path.isfile("{0}/{1}".format(bin_path,dependent)):
             missing_dependencies.append(dependent)
     if missing_dependencies != []:
         print("Missing the following required binary(ies) in bin/ (must be named as listed): {0}".format(", ".join(missing_dependencies)))
@@ -2384,7 +2381,7 @@ def main(argv=None):
             args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD = params.parse_options(argv)
         
         #Run a check to make sure binaries are present
-        check_dependencies(current_dir)
+        check_dependencies()
         
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
