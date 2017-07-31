@@ -543,13 +543,17 @@ def gather_assemblies_from_bioproject_IDs(bioprojectIDs,IDs=True,num_limit=10000
 
 def get_Accs(IDs):
     
-    handle = Entrez.efetch(db='nuccore', rettype="acc", id=IDs)   #Get Acc#s of those found from search
-    Accs = []
-    for Id in handle:
-        if Id.strip() != "":
-            Accs.append(Id.strip())          
-    handle.close()
-
+    attempt = 1
+    while attempt < 4:
+        try:    
+            handle = Entrez.efetch(db='nuccore', rettype="acc", id=IDs)   #Get Acc#s of those found from search
+            Accs = []
+            for Id in handle:
+                if Id.strip() != "":
+                    Accs.append(Id.strip())          
+            handle.close()
+        except:
+            attempt += 1
     return Accs
          
 def download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],fastanames={},ask=False):
