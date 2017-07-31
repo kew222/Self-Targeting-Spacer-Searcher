@@ -355,6 +355,11 @@ def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,
                 print("Attempt %i of 3" % attempt_num)
                 attempt_num += 1
                 time.sleep(15)
+            except urllib2.URLError as err:
+                print("Received error  %s" % err)
+                print("Attempt %i of 3" % attempt_num)
+                attempt_num += 1
+                time.sleep(15)
             except RuntimeError:
                 #NCBI probably closed the connection early, happens with poor internet connections
                 if attempt_num == 3:
