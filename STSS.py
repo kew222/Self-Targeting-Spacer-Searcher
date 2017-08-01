@@ -1063,7 +1063,7 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
                 bad_gb_links.append(contig_Acc)
                 skip = True
                 break
-            except:
+            except Exception as err:
                 print("Received error %s" % err)
                 print("Attempt %i of 3" % attempt)
                 attempt += 1
