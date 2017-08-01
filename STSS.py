@@ -1063,13 +1063,11 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
                 bad_gb_links.append(contig_Acc)
                 skip = True
                 break
-            except urllib2.URLError as err:
+            except:
                 print("Received error %s" % err)
                 print("Attempt %i of 3" % attempt)
                 attempt += 1
                 time.sleep(15)
-            except:
-                raise 
         else:  #if the number of attempts is exceeded
             print("Too many failed connection attempts, please check your internet connection.")
             exit()    
