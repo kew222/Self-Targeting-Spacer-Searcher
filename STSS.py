@@ -1594,7 +1594,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 file1.write(">Subject_Sequence\n{0}\n".format(target_subseq))
  
             #Then align the spacer sequence to the subsection
-            blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt 4 -max_target_seqs 1 -ungapped -strand plus".format(bin_path,query_file,subject_file)
+            blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt 4 -max_target_seqs 1 -word_size 7 -ungapped -strand plus".format(bin_path,query_file,subject_file)
             handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate()
      
