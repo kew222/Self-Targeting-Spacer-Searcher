@@ -1128,6 +1128,8 @@ def find_Cas_proteins(align_pos,record,HMM_dir,CDD=False,Cas_gene_distance=20000
                         if is_Cas:
                             if pseudogene:
                                 protein_name += " (pseudo)"
+                            if Cas_gene_distance == 0:
+                                protein_name += " (in {0})".format(align_pos)   
                             if protein_name not in proteins_identified and protein_name != '': 
                                 proteins_identified.append(protein_name)
                                 if feature.location.start < upstream_pos + Cas_gene_distance:  #if upstream of the array
@@ -1271,42 +1273,54 @@ def find_spacer_target(Acc_num_target,alt_alignment):
     return self_targets               
     
 def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,CDD=False):                   
-   
+    global all_contigs_checked
+    global Cas_gene_analysis_dict
+                   
     #If Cas_gene_distance is 0, this is a special case where all of the genbank sequences are to be checked in full for any Cas genes
     if Cas_gene_distance == 0:
-        #will need to determine what all of the genbank files are, download them and search all of them for Cas genes
-        
-        #First, look up the assembly that the locus containing contig is in
-        while True:
-            genomes = NCBI_search(contig_Acc,"nucleotide",num_limit=100000,tag="",exclude_term="")
-            assemblies = []
-            assemblies = link_nucleotide_to_assembly(genomes,assemblies,num_limit=100000) 
-            contig_GIs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[])
-            try:
-                genome_Accs = get_Accs(contig_GIs[0])
+
+        #Check to see if the current contig is part of a set that was already checked
+        for check_list in all_contigs_checked:
+            if contig_Acc in check_list[1]:
+                proteins_identified, types_list, up_down = Cas_gene_analysis_dict[check_list[0]]
                 break
-            except IndexError:  #these errors occasionally appear (from incomplete searches that get returned?)
-                print("Error looking up GenBank files for contigs from {0}'s assembly.".format(contig_Acc))
-                time.sleep(3)
-        
-        all_proteins_identified = []; all_types_list = []; total_up_down = 0
-        for genome_Acc in genome_Accs:
-            contig_filename = genome_Acc.split(".")[0] + ".gb"
-            if os.path.isfile("GenBank_files/{0}.gb".format(contig_filename)):
+        else:
+            #will need to determine what all of the genbank files are, download them and search all of them for Cas genes
+            #First, look up the assembly that the locus containing contig is in
+            while True:
+                genomes = NCBI_search(contig_Acc,"nucleotide",num_limit=100000,tag="",exclude_term="")
+                assemblies = []
+                assemblies = link_nucleotide_to_assembly(genomes,assemblies,num_limit=100000) 
+                contig_GIs = link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[])
                 try:
-                    record = SeqIO.read(contig_filename, 'genbank')
-                except AttributeError:
+                    genome_Accs = get_Accs(contig_GIs[0])
+                    break
+                except IndexError:  #these errors occasionally appear (from incomplete searches that get returned?)
+                    print("Error looking up GenBank files for contigs from {0}'s assembly.".format(contig_Acc))
+                    time.sleep(3)
+            
+            all_proteins_identified = []; all_types_list = []; total_up_down = 0
+            for genome_Acc in genome_Accs:
+                contig_filename = genome_Acc.split(".")[0] + ".gb"
+                if os.path.isfile("GenBank_files/{0}.gb".format(contig_filename)):
+                    try:
+                        record = SeqIO.read(contig_filename, 'genbank')
+                    except AttributeError:
+                        record = download_genbank(genome_Acc)
+                else:
                     record = download_genbank(genome_Acc)
-            else:
-                record = download_genbank(genome_Acc)
-            print("Checking {0} contig for Cas proteins...".format(genome_Acc))
-            proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,HMM_dir,CDD,Cas_gene_distance)
-            all_proteins_identified += proteins_identified
-            all_types_list += types_list
-            total_up_down += up_down
-        proteins_identified = all_proteins_identified
-        types_list = all_types_list
-        up_down = total_up_down
+                print("Checking {0} contig for Cas proteins...".format(genome_Acc))
+                proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,HMM_dir,CDD,Cas_gene_distance)
+                all_proteins_identified += proteins_identified
+                all_types_list += types_list
+                total_up_down += up_down
+            proteins_identified = all_proteins_identified
+            types_list = all_types_list
+            up_down = total_up_down
+            #Store the results from the genome scan so it will only be run once if multiple self-targeting spacers occurr in the same genome
+            all_contigs_checked.append([genome_Accs[0],[genome_Accs]])
+            Cas_gene_analysis_dict[genome_Accs[0]] = proteins_identified, types_list, up_down
+        
     else:
         #Find Cas proteins near the spacer-repeat region
         proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,HMM_dir,CDD,Cas_gene_distance)
@@ -2391,6 +2405,12 @@ def main(argv=None):
         
         #Run a check to make sure binaries are present
         check_dependencies()
+        
+        if Cas_gene_distance == 0:
+            global all_contigs_checked
+            global Cas_gene_analysis_dict
+            Cas_gene_analysis_dict = {}
+            all_contigs_checked = []
         
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
