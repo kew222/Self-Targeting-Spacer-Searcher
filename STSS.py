@@ -838,6 +838,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
             
         if good_genome:     
             result_file = "CRISPR_analysis/" + fastaname.split(".")[0] + ".out"
+            print("blueberries",result_file)
             CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -maxRL 45 -minRL 20 -minNR {1} -maxSL 45 -minSL 18 {2} {3}".format(bin_path,repeats,filein,result_file)
             crispr_search = subprocess.Popen(CRISPR_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = crispr_search.communicate()
