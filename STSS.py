@@ -793,6 +793,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
         filein = holder[0]
         if not os.path.exists("CRISPR_analysis"):
             os.mkdir("CRISPR_analysis")
+        fasta_sequences = SeqIO.parse(open(filein),'fasta')
         #Check that the genome file has data in it
         with open(filein, 'rU') as file1:
             lines = file1.readlines()
@@ -800,7 +801,11 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
             print('No genomic data in {0}. Skipping...'.format(fastaname))
             good_genome = False
         else:
-            line_no = 0; abs_pos = 0; affected_lines = []
+            line_no = 0; abs_pos = 0; affected_lines = []; lines = []
+            fasta_sequences = SeqIO.parse(open(filein),'fasta')
+            for fasta in fasta_sequences:
+                    lines.append(str(">"+fasta.name))
+                    lines.append(str(fasta.seq))
             for line in lines:
                 if Ns in line:
                     if affected_lines == []:
@@ -810,10 +815,10 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
                     pos_adjust = 0
                     #Look for instances of long strings of Ns, need to search line by line, as well as within each line
                     line_temp = line
+                    Ns_position = line_temp.find(Ns)
                     adj_leng = 200  #number of Ns to remove in a chunk
-                    while line_temp.find(Ns) != -1:
-                        Ns_position_orig = line_temp.find(Ns)
-                        Ns_position = Ns_position_orig 
+                    while Ns_position != -1:
+                        Ns_position_orig = Ns_position
                         while Ns_position == Ns_position_orig:
                         #Find where the Ns are, and remove 200 then note that the positions have been altered by 200, then repeat and look for again
                             line_temp = line_temp[:Ns_position] + line_temp[Ns_position+adj_leng:]
@@ -825,7 +830,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
                 line_no += 1
             if affected_lines != []:
                 mod_dir = "/".join(filein.split("/")[:-1])+"/edited_fastas/"
-                mod_file = mod_dir + "".join(filein.split("/")[1].split(".")[:-1])+"_Ns_removed.fasta"
+                mod_file = mod_dir + "".join(filein.split("/")[-1].split(".")[:-1])+"_Ns_removed.fasta"
                 if not os.path.exists(mod_dir):
                     os.mkdir(mod_dir)
                 with open(mod_file, 'w') as file1:
@@ -838,7 +843,6 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir):
             
         if good_genome:     
             result_file = "CRISPR_analysis/" + fastaname.split(".")[0] + ".out"
-            print("blueberries",result_file)
             CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -maxRL 45 -minRL 20 -minNR {1} -maxSL 45 -minSL 18 {2} {3}".format(bin_path,repeats,filein,result_file)
             crispr_search = subprocess.Popen(CRISPR_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = crispr_search.communicate()
