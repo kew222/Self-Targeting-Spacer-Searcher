@@ -239,8 +239,9 @@ def load_provided(provided_dir,num_limit,complete_only):
         if provided_complete_counter + provided_WGS_counter == num_limit:
             break
         #See if one or a set of contigs
+        name = ''
         try:
-            record = SeqIO.read(it,"fasta")  #will fail if WGS
+            record = SeqIO.read(it,"fasta")  #will fail if WGS or not fasta
             try:
                 name = record.id.split(" ")[0]   #try to get NCBI formatted Accession # out of header
             except:
@@ -252,12 +253,16 @@ def load_provided(provided_dir,num_limit,complete_only):
                 try:
                     for record in SeqIO.parse(it, "fasta"):
                         try:
-                            name = record.id.split("|")[0]   #try to get NCBI formatted Accession # out of header
+                            if "|" in record.id:
+                                name = record.id.split("|")[0].split(" ")[0]   #try to get NCBI formatted Accession # out of header
+                            else:
+                                name = record.id.split("")[0]
                         except:
                             name = record.id
                         break
-                    fastanames[name] = [it, "provided", "WGS"]
-                    provided_WGS_counter += 1
+                    if name != '':
+                        fastanames[name] = [it, "provided", "WGS"]
+                        provided_WGS_counter += 1
                 except:                   
                     print("File {0} doesn't seem to be formatted properly. Skipping.".format(it))
         except:
@@ -890,14 +895,12 @@ def get_loci(CRISPR_results,fastanames,affected_genomes={}):
                 spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split(" ")[0].strip(), 'lookup', 'complete']])  #if looked up, this should be the accession number
             elif fastanames[genome[1]][1] == 'lookup' and fastanames[genome[1]][2] == 'WGS':
                 spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split("|")[0].strip(), 'lookup', 'WGS']])  #if looked up, this should be the accession number
-            elif fastanames[genome[1]][1] == 'provided' and fastanames[genome[1]][2] == 'complete':
+            elif fastanames[genome[1]][1] == 'provided':
                 try:
-                    spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split(" ")[0].strip(), 'lookup', 'complete']])  #Try to the accession number (will be there if using NCBI formatted headers)  
-                except:
-                    spacer_data.append([[lines[0].split("ORGANISM:  ")[1].strip(), 'provided', 'complete']])  #otherwise, take the provided name in fasta
-            else:
-                try:
-                    spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split("|")[0].strip(), 'provided', 'WGS']])  #Try to the accession number (will be there if using NCBI formatted headers)  
+                    if "|" in lines[0].split("ORGANISM:  ")[1]:
+                        spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split("|")[0], 'lookup', 'WGS']])  #Try to get the accession number (will be there if using NCBI formatted headers)  
+                    else:
+                        spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split(" ")[0], 'provided', 'WGS']])  #otherwise, take the provided name in fasta
                 except:
                     spacer_data.append([[lines[0].split("ORGANISM:  ")[1].strip(), 'provided', 'WGS']])  #otherwise, take the provided name in fasta
             CRISPR_positions = []
@@ -973,7 +976,7 @@ def spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_
         blast_results.append(output.split("\n"))
         num += 1
     print("Finished BLASTing all spacer sequences.")
-
+    
     return blast_results
 
 def get_PAMs(direction,align_pos,sequence):
@@ -1395,7 +1398,8 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         contig_Acc = contig_Accs[Acc_num]
     else:
         contig_Acc = Acc_num
-        
+    
+    print('fourteen',Acc_num)    
     #First check whether this array has been checked once before
     print("Analyzing self-targeting spacer found in {0}...".format(Acc_num_self_target))
     false_positive = False
@@ -1583,6 +1587,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 downstream = True
             repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
             
+
             #Take the spacer sequence and realign to the target to find what part of the sequence is perfectly aligned to establish a register
             query_file = "temp/temp_query.txt"
             with open(query_file, "w") as file1:
@@ -1602,7 +1607,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt 4 -max_target_seqs 1 -word_size 7 -ungapped -strand plus".format(bin_path,query_file,subject_file)
             handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate()
-     
             #Now look up what part of the spacer aligns, and extend the alignment in both directions
             #Because CRISPR alignment will not allow for indels, assume that stuck in register of best alignment
             #In reality, one end or the other of the spacer will be more important, but the best alignment is not in the same register as the PAM/seed region, it probably can't bind anyway
@@ -1867,6 +1871,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
     contig_Accs = {}
     genome_number = 0
     for genome in blast_results:
+        print(genome)
         for result in genome:
             genome_type = spacer_data[genome_number][0][2]
             handle = [x.strip() for x in result.split("\t") if x != '']
@@ -1887,18 +1892,23 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                         Acc_num = handle[1].strip()  #store the name this way if sequence was provided
                         Acc_num_self_target = Acc_num
                 else:   ##If provided and WGS
-                    try:  #try to see if has an NCBI header that I formatted for the contigs
+                    try:  #try to see if has an NCBI header formatted for the contigs
                         Acc_num_self_target = handle[1].split("|")[1]   #Accession number for contig of found spacer (not necessarily locus)!
                         Acc_num = handle[1].split("|")[0]   #Not GI number!! Accession of master WGS record!
                     except:
-                        Acc_num = handle[1].strip()  #store the name this way if sequence was provided
+                        try:
+                            Acc_num = handle[1].strip().split(" ")[0]  #try to store the name this way if sequence was provided
+                        except:
+                            Acc_num = handle[1].strip()  
                         Acc_num_self_target = Acc_num
-
+                
+                print('blueberries', Acc_num, Acc_num_self_target)
                 crispr = int(handle[0].split("_")[1])
                 spacer = int(handle[0].split("_")[3]) 
                 spacer_seq = spacer_data[genome_number][crispr][spacer][0]
                 #search data for GI, then CRISPR/spacer combination, then see if the position is the previously determined
                 for x in spacer_data:
+                    outside_loci = True
                     if x[0][0] == Acc_num:
                         #Check that the spacer is not occurring in one of the loci that was predicted
                         try:
@@ -1913,7 +1923,6 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                     outside_loci = False
                                     break
                                 else:
-                                    outside_loci = True
                                     self_target_contig = Acc_num_self_target   #for complete data, these will never be different
                         else: #(genome_type is WGS)
                             #Because the CRISPR search tool is not intelligent, need to convert position of spacer within entire file to within the contig of interest
@@ -1923,10 +1932,10 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                             with open(contigs_file, 'rU') as fileobj:
                                 lines = fileobj.readlines()
                             summ = 0
-                            contig_num = 0
+                            contig_num = 0; self_target_contig = -1
                             for line in lines:
                                 #because the order of the contigs is not determined (based on NCBI download order), need to find where it is in fasta file
-                                if line.find(Acc_num_self_target) > -1:
+                                if line.find(Acc_num_self_target) > -1 and self_target_contig < 0:
                                     self_target_contig = contig_num  #Gives the contig number from the top
                                 if contig_num == 0:
                                     summ = 1     #the current implementation is a bit ad hoc, essentially giving a slight pad to the locus, could always manually override.
@@ -1938,9 +1947,10 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                 
                             #Need to adjust locus range by subtracting all of the contigs that are farther up in the file
                             #Determine how many contigs need to be subtracted
-                            subtract = contig_lengths[self_target_contig]  #If in the opposite orientation, the last line will count toward 
-                            
-                            outside_loci = True              
+                            if self_target_contig > 0:
+                                subtract = contig_lengths[self_target_contig]  #If in the opposite orientation, the last line will count toward 
+                            else:
+                                subtract = 0
                             for locus in range(1,len(x)):
                                 locus_range = [int(y) for y in x[locus][0].split("Range: ")[1].strip().split(" - ")]
                                 lower_limit = locus_range[0] - pad_locus - subtract
@@ -1954,24 +1964,31 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                             if outside_loci:
                                 #Determine what contig the locus is in (align_locus)
                                 #First open the right file and find the order of contigs
+                                print('melons',Acc_num)
                                 filetocheck = fastanames[Acc_num][0]
                                 contigs = []
                                 with open(filetocheck, 'rU') as findlocus:
                                     for line in findlocus:
                                         if line[0] == '>':
-                                            contigs.append(line.split("|")[1].strip())
+                                            try:
+                                                contigs.append(line.split("|")[1].strip())
+                                            except:
+                                                contigs.append(line.split(" ")[0].strip()[1:])  #skip the opening caret
                                 #determine which contig it was in based on the lengths determined above & its correct length within its fragment
                                 contig_num = 0
-                                for length in contig_lengths:
-                                    if align_locus < contig_lengths[contig_num+1]:
-                                        contig_Accs[Acc_num] = contigs[contig_num]   #allows for conversion later between WGS master and spacer containing contig (locus)
-                                        align_locus -= contig_lengths[contig_num]
-                                        break
-                                    elif contig_num == len(contig_lengths) - 2:  #At the second to last contig (but align_locus is larger), means contig is last position
-                                        contig_Accs[Acc_num] = contigs[contig_num+1]   #allows for conversion later between WGS master and spacer containing contig (locus)
-                                        align_locus -= contig_lengths[contig_num+1]
-                                        break
-                                    contig_num += 1    
+                                try:
+                                    for length in contig_lengths:
+                                        if align_locus < contig_lengths[contig_num+1]:
+                                            contig_Accs[Acc_num] = contigs[contig_num]   #allows for conversion later between WGS master and spacer containing contig (locus)
+                                            align_locus -= contig_lengths[contig_num]
+                                            break
+                                        elif contig_num == len(contig_lengths) - 2:  #At the second to last contig (but align_locus is larger), means contig is last position
+                                            contig_Accs[Acc_num] = contigs[contig_num+1]   #allows for conversion later between WGS master and spacer containing contig (locus)
+                                            align_locus -= contig_lengths[contig_num+1]
+                                            break
+                                        contig_num += 1  
+                                except IndexError:
+                                    contig_Accs[Acc_num] = contigs[0]   #this is really a placeholder, this error can occur if either formatting is off or a complete genome passes through, giving a list of length 1.
                                                                                     
                         if outside_loci:   #only keep alignments that don't match 
                             #Determine what the'PAM' sequence is after the non-locus alignment to report                                           
@@ -1990,26 +2007,26 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                             except KeyError:
                                 pass
                             if not false_positive:
-                               blast_results_filtered_summary.append([Acc_num_self_target,  #Accession # of sequence with position of spacer target outside of array
-                                                                      Acc_num,              #Accession # of sequence with position of spacer within array 
-                                                                      species,              #Species pulled from GenBank file
-                                                                      Type_proteins,        #Predicted CRISPR subtype based on locus protein contents
-                                                                      Type_repeat,          #CRISPR subtype suggested by repeat sequence
-                                                                      locus_condition,      #Description of locus relative to Makarova, 2015 Nat Rev Micro (Figure 2)
-                                                                      proteins_found,       #Cas proteins found in the locus
-                                                                      crispr,               #CRISPR number according to CRT results (for lookup in CRT results)
-                                                                      spacer,               #spacer number according to CRT results (for lookup in CRT results)
-                                                                      alt_alignment,        #Position of spacer target outside of array
-                                                                      align_locus,          #Position of spacer within array 
-                                                                      spacer_seq,           #Sequence of the self-targeting spacer 
-                                                                      PAM_seq_up,           #Upstream 'PAM' sequence (upstream of target sequence)
-                                                                      target_sequence,      #Sequence of the target of self-targeting spacer (to determine potential mismatches)
-                                                                      PAM_seq_down,         #Downstream 'PAM' sequence (upstream of target sequence)
-                                                                      consensus_repeat,     #Consensus repeat sequence 
-                                                                      repeat_mutations,     #Mutations from the consensus repeat in the repeats before or after the spacer in the array
-                                                                      array_direction,      #Direction of the array (forward or reverse)
-                                                                      self_target,          #Genes that are targeted by the self-targeting spacer
-                                                                      "N/A"])                #-placeholder- for PHASTER results (if later run)         
+                                blast_results_filtered_summary.append([Acc_num_self_target,  #Accession # of sequence with position of spacer target outside of array
+                                                                        Acc_num,              #Accession # of sequence with position of spacer within array 
+                                                                        species,              #Species pulled from GenBank file
+                                                                        Type_proteins,        #Predicted CRISPR subtype based on locus protein contents
+                                                                        Type_repeat,          #CRISPR subtype suggested by repeat sequence
+                                                                        locus_condition,      #Description of locus relative to Makarova, 2015 Nat Rev Micro (Figure 2)
+                                                                        proteins_found,       #Cas proteins found in the locus
+                                                                        crispr,               #CRISPR number according to CRT results (for lookup in CRT results)
+                                                                        spacer,               #spacer number according to CRT results (for lookup in CRT results)
+                                                                        alt_alignment,        #Position of spacer target outside of array
+                                                                        align_locus,          #Position of spacer within array 
+                                                                        spacer_seq,           #Sequence of the self-targeting spacer 
+                                                                        PAM_seq_up,           #Upstream 'PAM' sequence (upstream of target sequence)
+                                                                        target_sequence,      #Sequence of the target of self-targeting spacer (to determine potential mismatches)
+                                                                        PAM_seq_down,         #Downstream 'PAM' sequence (upstream of target sequence)
+                                                                        consensus_repeat,     #Consensus repeat sequence 
+                                                                        repeat_mutations,     #Mutations from the consensus repeat in the repeats before or after the spacer in the array
+                                                                        array_direction,      #Direction of the array (forward or reverse)
+                                                                        self_target,          #Genes that are targeted by the self-targeting spacer
+                                                                        "N/A"])                #-placeholder- for PHASTER results (if later run)         
                                 
         genome_number += 1 
     if blast_results_filtered_summary == []:
