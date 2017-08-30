@@ -1389,17 +1389,16 @@ def locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,CDD=False):
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
-def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD=False,repeats=4):   
+def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD=False,repeats=4):   
 
     #Determine whether the current contig (or genome) has already had it's locus checked
     global loci_checked
     
     if genome_type == 'WGS':
-        contig_Acc = contig_Accs[Acc_num]
+        contig_Acc = locus_Accs[Acc_num+Acc_num_self_target+str(align_locus)] 
     else:
         contig_Acc = Acc_num
     
-    print('fourteen',Acc_num)    
     #First check whether this array has been checked once before
     print("Analyzing self-targeting spacer found in {0}...".format(Acc_num_self_target))
     false_positive = False
@@ -1867,11 +1866,27 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
 
     #Next, search each genome sequence for each repeat sequence and determine if it shows up more than once (bypassed CRISPR)
     #Since the genomes, spacers, etc. are in the same order, look for the start lengths and filter out reads that were found from CRISPR search
-    blast_results_filtered_summary = []
+    
+    #First, build a dictionary containing the contigs of each genome
     contig_Accs = {}
+    for key, value in fastanames.iteritems():
+        contig_list = []
+        filetocheck = value[0]
+        with open(filetocheck, 'rU') as file1:
+            lines = file1.readlines()
+        for line in lines:
+            if line[0] == '>':
+                try:
+                    contig_list.append(line.split("|")[1].strip())
+                except:
+                    contig_list.append(line.split(" ")[0].replace(">",""))  #skip the opening caret
+        contig_Accs[key] = contig_list
+    
+    blast_results_filtered_summary = []
     genome_number = 0
+    locus_Accs = {}
+    Acc_num = '';  Acc_num_self_target = ''
     for genome in blast_results:
-        print(genome)
         for result in genome:
             genome_type = spacer_data[genome_number][0][2]
             handle = [x.strip() for x in result.split("\t") if x != '']
@@ -1896,17 +1911,22 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                         Acc_num_self_target = handle[1].split("|")[1]   #Accession number for contig of found spacer (not necessarily locus)!
                         Acc_num = handle[1].split("|")[0]   #Not GI number!! Accession of master WGS record!
                     except:
+                        #Getting here suggests that the genome does not have the master|contig format, so will try to find the master using the contig_Accs
                         try:
-                            Acc_num = handle[1].strip().split(" ")[0]  #try to store the name this way if sequence was provided
-                        except:
-                            Acc_num = handle[1].strip()  
-                        Acc_num_self_target = Acc_num
-                
-                print('blueberries', Acc_num, Acc_num_self_target)
+                            Acc_num_self_target = handle[1].strip().split(" ")[0]  #try to store the name this way if sequence was provided
+                            for key,value in contig_Accs.iteritems():  #try a reverse dictionary lookup to find the WGS master
+                                if Acc_num_self_target in value:
+                                    Acc_num = key
+                        except KeyError:
+                            Acc_num = handle[1].strip()  #If cannot get any formatting found, just pass the line along, but this is likely to cause a problem later. 
+                            Acc_num_self_target = Acc_num
+                            print("Warning! {0} does not have a readily identifable Accession number, results may be incorrect!".format(Acc_num))
+                        
                 crispr = int(handle[0].split("_")[1])
                 spacer = int(handle[0].split("_")[3]) 
                 spacer_seq = spacer_data[genome_number][crispr][spacer][0]
                 #search data for GI, then CRISPR/spacer combination, then see if the position is the previously determined
+                
                 for x in spacer_data:
                     outside_loci = True
                     if x[0][0] == Acc_num:
@@ -1927,6 +1947,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                         else: #(genome_type is WGS)
                             #Because the CRISPR search tool is not intelligent, need to convert position of spacer within entire file to within the contig of interest
                             #First need to determine the length of each contig (CRISPR find tool ignores newlines and first line in length
+                            
                             contig_lengths = []
                             contigs_file = fastanames[Acc_num][0]
                             with open(contigs_file, 'rU') as fileobj:
@@ -1962,37 +1983,25 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                     break
                             
                             if outside_loci:
-                                #Determine what contig the locus is in (align_locus)
-                                #First open the right file and find the order of contigs
-                                print('melons',Acc_num)
-                                filetocheck = fastanames[Acc_num][0]
-                                contigs = []
-                                with open(filetocheck, 'rU') as findlocus:
-                                    for line in findlocus:
-                                        if line[0] == '>':
-                                            try:
-                                                contigs.append(line.split("|")[1].strip())
-                                            except:
-                                                contigs.append(line.split(" ")[0].strip()[1:])  #skip the opening caret
                                 #determine which contig it was in based on the lengths determined above & its correct length within its fragment
                                 contig_num = 0
                                 try:
                                     for length in contig_lengths:
                                         if align_locus < contig_lengths[contig_num+1]:
-                                            contig_Accs[Acc_num] = contigs[contig_num]   #allows for conversion later between WGS master and spacer containing contig (locus)
                                             align_locus -= contig_lengths[contig_num]
+                                            locus_Accs[Acc_num+Acc_num_self_target+str(align_locus)] = contig_Accs[Acc_num][contig_num]   #Used for replacing the WGS with the locus position later, complicated key to avoid clashes
                                             break
                                         elif contig_num == len(contig_lengths) - 2:  #At the second to last contig (but align_locus is larger), means contig is last position
-                                            contig_Accs[Acc_num] = contigs[contig_num+1]   #allows for conversion later between WGS master and spacer containing contig (locus)
                                             align_locus -= contig_lengths[contig_num+1]
+                                            locus_Accs[Acc_num+Acc_num_self_target+str(align_locus)] = contig_Accs[Acc_num][contig_num+1]
                                             break
-                                        contig_num += 1  
-                                except IndexError:
-                                    contig_Accs[Acc_num] = contigs[0]   #this is really a placeholder, this error can occur if either formatting is off or a complete genome passes through, giving a list of length 1.
-                                                                                    
+                                        contig_num += 1
+                                except: 
+                                    locus_Accs[Acc_num+Acc_num_self_target+str(align_locus)] = contig_Accs[Acc_num][0] #will happen if only 1 contig, but marked as WGS
+                                                 
                         if outside_loci:   #only keep alignments that don't match 
                             #Determine what the'PAM' sequence is after the non-locus alignment to report                                           
-                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,contig_Accs,provided_dir,genome_type,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats)
+                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats)
                             #Need to potentially adjust the alt_alignment variable because of long strings of Ns in the genome
                             try:
                                 affected_lines = affected_genomes[Acc_num]
@@ -2035,7 +2044,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
     else:
         print("Done searching for self-targeting spacers. {0} self-targeting spacers found in total.".format(len(blast_results_filtered_summary)))
 
-    return blast_results_filtered_summary,contig_Accs
+    return blast_results_filtered_summary, locus_Accs
 
 def Export_results(in_island,not_in_island,unknown_islands,prefix,contig_Accs={},fastanames={}):
 
@@ -2066,7 +2075,7 @@ def output_results(results,replacement_dict,fastanames,filename):
                     column = 0
                     for y in line:
                         if column == 1 and replace_Acc:
-                            x = x + replacement_dict[y] + '\t'
+                            x = x + replacement_dict[line[1]+line[0]+str(line[10])] + '\t'
                         else:
                             x = x + str(y) + "\t"
                         column += 1
@@ -2246,14 +2255,14 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_l
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
 
     #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
-    blast_results_filtered_summary,contig_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats)
+    blast_results_filtered_summary, locus_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,CDD,repeats)
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
-    output_results(blast_results_filtered_summary,contig_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
+    output_results(blast_results_filtered_summary,locus_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
     
     if not skip_PHASTER:
         in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(blast_results_filtered_summary,current_dir)
-        Export_results(in_island,not_in_island,unknown_islands,prefix,contig_Accs,fastanames)
+        Export_results(in_island,not_in_island,unknown_islands,prefix,locus_Accs,fastanames)
         print("PHASTER analysis complete.")
     else:
         protein_list = []
