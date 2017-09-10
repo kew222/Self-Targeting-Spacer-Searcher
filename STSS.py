@@ -1548,6 +1548,9 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 #Also adjust the alignment positions
                 align_locus = align_locus + move_F_len
                 alt_alignment = alt_alignment + move_F_len
+                if move_F_len != 0:
+                    #need to adjust the keys in locus_Accs (used for correct labeling of the contig with the CRISPR array)
+                    locus_Accs[Acc_num+Acc_num_self_target+str(align_locus)] = locus_Accs[Acc_num+Acc_num_self_target+str(align_locus-move_F_len)]
                 
             #Perform a multiple sequence alignment to get the consensus repeat using dummy alignment from biopython
             #Build a fasta format
@@ -1959,7 +1962,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                 if line.find(Acc_num_self_target) > -1 and self_target_contig < 0:
                                     self_target_contig = contig_num  #Gives the contig number from the top
                                 if contig_num == 0:
-                                    summ = 1     #the current implementation is a bit ad hoc, essentially giving a slight pad to the locus, could always manually override.
+                                    summ = 0     #the current implementation is a bit ad hoc, essentially giving a slight pad to the locus, could always manually override.
                                 else:
                                     summ += len(line.strip()) 
                                 if line[0] == '>':
@@ -2012,7 +2015,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                         adjust_val += line[1]    
                                     else:
                                         break
-                                alt_alignment += adjust_val
+                                alt_alignment += adjust_val 
                             except KeyError:
                                 pass
                             if not false_positive:
