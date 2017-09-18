@@ -2342,6 +2342,7 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
     lines = []
     Acc_to_print = Acc_to_search
     url = "http://phaster.ca/phaster_api"
+    json_err = 0
     while True:
         try:
             if post:
@@ -2365,7 +2366,20 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
                     return lines,skip_entry    
             else:
                 r = requests.get(url+"?acc={0}".format(Acc_to_search), timeout=20)  #do a PHASTER search in the potential hits genome
-            r2 = r.json()
+            try:
+                json_err += 1
+                r2 = r.json()
+                json_err = 0
+            except ValueError as err:  #catches JSON objects that can't be decoded
+                if json_err == 3:  #Give it three chances to decode it
+                    print(err)
+                    print("Skipping {0}...".format(Acc_to_print))
+                    lines = []
+                    return lines,skip_entry 
+                else:
+                    time.sleep(5)  #wait 5 seconds before retrying
+                    continue
+ 
             if post:
                 Acc_to_search = str(r2[u'job_id'])   #switch Acc_to_search temporarily to the idea to search
                 post = False  #Once posted, can switch to GET for job status requests
@@ -2389,7 +2403,7 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
         except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
             time.sleep(3)  #wait 3 seconds before retrying
             pass    
-    
+        
     #Write the PHASTER results to a file
     with open(PHASTER_file, "w") as jot_notes:
         for line in lines:
