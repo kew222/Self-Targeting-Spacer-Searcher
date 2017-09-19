@@ -1473,7 +1473,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         
         #Look for false positives and incorrect repeat/spacers
         #Begin by performing a multiple sequence alignment for the spacers, looking for hotspots on either end that could indicate a misplaced repeat part
-        i = 1; fasta_string = ''; valid_dna = 'ACGTN'
+        i = 1; fasta_string = ''; valid_dna = 'ACGTN'; 
         for spaceri in spacers:
             if all(i in valid_dna for i in spaceri) and len(spaceri) > 10:  #Check if the repeat has an unexpected character (not A,C,G,T,N), and that it's not a single/short string
                 fasta_string += '>{0}\n{1}\n'.format(i,spaceri)
@@ -1555,27 +1555,25 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 
             #Perform a multiple sequence alignment to get the consensus repeat using dummy alignment from biopython
             #Build a fasta format
-            i = 1; fasta_string = ''; valid_dna = "ACGTN"
+            i = 1; fasta_string = ''; valid_dna = "ACGTN"; spacer_pos_hold = spacer
             for repeat in repeats:
-                print('fancy hat', repeat)
                 if all(i in valid_dna for i in repeat) and len(repeat) > 10:  #Check if the repeat has an unexpected character (not A,C,G,T,N), and that it's not a single/short string
                     fasta_string += '>{0}\n{1}\n'.format(i,repeat)
                     i += 1
-            print('fancy tie',fasta_string)
+                elif spacer >= i: 
+                    spacer_pos_hold -= 1  #If one of the repeats is removed due to being too short, etc. this variable is used to change the spacer position below to check the appropriate repeats
             if not os.path.exists('temp'):
                 os.mkdir('temp')
             clustal_cmd = "{0}clustalo -i - --force --outfmt=clustal -o temp/align_temp_output.aln".format(bin_path)
             handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate(input=fasta_string)                        
-            print('fancy pants', error)
             alignments = AlignIO.read("temp/align_temp_output.aln", "clustal")
             repeats_align = AlignInfo.SummaryInfo(alignments)
             consensus_repeat = str(repeats_align.dumb_consensus(ambiguous='N', require_multiple=1))                 
         
-            print('fancy trousers',alignments)
             #Then find up and downstream mutations, Switch to a symbolic representation for easier viewing
             downstream = False; 
-            for repeat in (str(alignments[spacer-1].seq),str(alignments[spacer].seq)):
+            for repeat in (str(alignments[spacer_pos_hold-1].seq),str(alignments[spacer_pos_hold].seq)):
                 i = 0; repeat_temp = ''
                 if repeat != consensus_repeat:
                     for letter in repeat:
