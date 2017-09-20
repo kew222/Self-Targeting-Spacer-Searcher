@@ -2378,6 +2378,7 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
                 if json_err == 3:  #Give it three chances to decode it
                     print(err)
                     print("Skipping {0}...".format(Acc_to_print))
+                    skip_entry = True
                     lines = []
                     return lines,skip_entry 
                 else:
