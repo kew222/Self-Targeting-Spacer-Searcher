@@ -1567,32 +1567,35 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             clustal_cmd = "{0}clustalo -i - --force --outfmt=clustal -o temp/align_temp_output.aln".format(bin_path)
             handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate(input=fasta_string)                        
-            alignments = AlignIO.read("temp/align_temp_output.aln", "clustal")
-            repeats_align = AlignInfo.SummaryInfo(alignments)
-            consensus_repeat = str(repeats_align.dumb_consensus(ambiguous='N', require_multiple=1))                 
-        
-            #Then find up and downstream mutations, Switch to a symbolic representation for easier viewing
-            downstream = False; 
-            for repeat in (str(alignments[spacer_pos_hold-1].seq),str(alignments[spacer_pos_hold].seq)):
-                i = 0; repeat_temp = ''
-                if repeat != consensus_repeat:
-                    for letter in repeat:
-                        if letter == consensus_repeat[i] or consensus_repeat[i] == 'N':  #perfect match
-                            repeat_temp += "."
-                        elif consensus_repeat[i] == '-' or letter == '-':   #case where there's an insertion in the repeat
-                            repeat_temp += letter
-                        elif letter != consensus_repeat[i]:  #don't match, but no dash means a mismatch
-                            repeat_temp += letter.lower()    #This way a mutation is lowercase, an insertion is uppercase
-                        i += 1
-                if repeat_temp == len(repeat) * '.':
-                    repeat_temp = ''  #catches case where an internal N prevents a perfect match
-                if downstream:
-                    repeat_D = repeat_temp
-                else:
-                    repeat_U = repeat_temp
-                downstream = True
-            repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
+            try:
+                alignments = AlignIO.read("temp/align_temp_output.aln", "clustal")
+                repeats_align = AlignInfo.SummaryInfo(alignments)
+                consensus_repeat = str(repeats_align.dumb_consensus(ambiguous='N', require_multiple=1))                 
             
+                #Then find up and downstream mutations, Switch to a symbolic representation for easier viewing
+                downstream = False; 
+                for repeat in (str(alignments[spacer_pos_hold-1].seq),str(alignments[spacer_pos_hold].seq)):
+                    i = 0; repeat_temp = ''
+                    if repeat != consensus_repeat:
+                        for letter in repeat:
+                            if letter == consensus_repeat[i] or consensus_repeat[i] == 'N':  #perfect match
+                                repeat_temp += "."
+                            elif consensus_repeat[i] == '-' or letter == '-':   #case where there's an insertion in the repeat
+                                repeat_temp += letter
+                            elif letter != consensus_repeat[i]:  #don't match, but no dash means a mismatch
+                                repeat_temp += letter.lower()    #This way a mutation is lowercase, an insertion is uppercase
+                            i += 1
+                    if repeat_temp == len(repeat) * '.':
+                        repeat_temp = ''  #catches case where an internal N prevents a perfect match
+                    if downstream:
+                        repeat_D = repeat_temp
+                    else:
+                        repeat_U = repeat_temp
+                    downstream = True
+                repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
+            except IndexError: #will only occur if the last repeat has strange characters
+                print("Issue with a repeat annotation from CRT. Skipping repeat mutation analysis of {0}...".format(Acc_num))
+                repeat_mutations = "Error in repeat, not analyzed"
 
             #Take the spacer sequence and realign to the target to find what part of the sequence is perfectly aligned to establish a register
             query_file = "temp/temp_query.txt"
