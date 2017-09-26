@@ -1486,12 +1486,13 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         spacers_align = AlignInfo.SummaryInfo(alignment)
         consensus_spacer = spacers_align.dumb_consensus()                 
         spacers_pssm = spacers_align.pos_specific_score_matrix(consensus_spacer, chars_to_ignore = ['N'])
+        print(spacers_pssm)
         #Now start at the beginning of the spacer consensus and step forward looking for overrepresented bases
         if len(spacers) > 4:
             overrep_percent = 0.75 #This number represents what the cutoff is for indentifying mistakes in the repeats - heuristic
         else:
             overrep_percent = 1   #to prevent small arrays from getting caught when they happen to have similar spacers sequences
-        move_F_len = 0; move_R_len = 0; indexes = range(0,len(consensus_spacer)-2)
+        move_F_len = 0; move_R_len = 0; indexes = range(0,len(consensus_spacer)-1)
         for step_dir in (1, -1):
             if step_dir == -1:
                 indexes.reverse()
@@ -1499,7 +1500,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 total_counts = sum(spacers_pssm[i].values())
                 count_limit = overrep_percent * total_counts
                 if round(count_limit) < count_limit:
-                    count_limit = round(count_limit) + 1
+                    count_limit = round(count_limit) + 1  #always round up
                 else:
                     count_limit = round(count_limit)
                 strong_homology = False
@@ -1516,17 +1517,18 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                         break
                 if not strong_homology:
                     break
-                
+             
         #Next, if either move statistic is greater than 0, remake the spacers and repeats lists with the correct sequences
         repeats_temp = []; i = 0
         for repeat in repeats:
             if i == 0: 
-                repeats_temp.append(repeat + spacers[i][:move_F_len])
+                repeats_temp.append(repeat + spacers[i][:move_F_len])              
             elif i < len(spacers): 
                 repeats_temp.append(spacers[i-1][len(spacers[i-1])-move_R_len-1:len(spacers[i-1])] + repeat + spacers[i][:move_F_len])
             else:
                 repeats_temp.append(spacers[i-1][len(spacers[i-1])-move_R_len-1:len(spacers[i-1])] + repeat)
-            i += 1
+            i += 1             
+        
         repeats = repeats_temp
         spacers_temp = []
         for spaceri in spacers:
