@@ -1414,7 +1414,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
     else:
         #Get the sequence for the contig (or genome) containing the self-targeting spacer match
         sequence,fastaname = fetch_sequence(fastanames,Acc_num,self_target_contig,provided_dir)
-            
         if need_locus_info:
             #Download the genbank file
             
@@ -1958,7 +1957,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                     outside_loci = False
                                     break
                                 else:
-                                    self_target_contig = Acc_num_self_target   #for complete data, these will never be different
+                                    self_target_contig = 0   #for complete data, these will never be different
                         else: #(genome_type is WGS)
                             #Because the CRISPR search tool is not intelligent, need to convert position of spacer within entire file to within the contig of interest
                             #First need to determine the length of each contig (CRISPR find tool ignores newlines and first line in length
@@ -1971,7 +1970,11 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                             contig_num = 0; self_target_contig = -1
                             for line in lines:
                                 #because the order of the contigs is not determined (based on NCBI download order), need to find where it is in fasta file
-                                if line.find(Acc_num_self_target) > -1 and self_target_contig < 0:
+                                try:
+                                    subtitle = line.split("|")[1] #First try a split with '|', which would be present if a downloaded genome
+                                except IndexError:
+                                    subtitle = line
+                                if subtitle.find(Acc_num_self_target) > -1 and self_target_contig < 0:
                                     self_target_contig = contig_num  #Gives the contig number from the top
                                 if contig_num == 0:
                                     summ = 0     #the current implementation is a bit ad hoc, essentially giving a slight pad to the locus, could always manually override.
