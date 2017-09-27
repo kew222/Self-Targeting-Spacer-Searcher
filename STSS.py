@@ -1796,12 +1796,12 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             #Also need to flip the orientation of the mutation annotations (for the repeats and target sequence)
             if target_sequence != "Perfect match":
                 target_sequence = flip_mismatch_notation(target_sequence)        
-            if repeat_mutations != "None":
+            if repeat_mutations not in ("None","Skipped","Error in repeat, not analyzed"):
                 if repeat_U != "":
                     repeat_U = flip_mismatch_notation(repeat_U)
                 if repeat_D != "":
                     repeat_D = flip_mismatch_notation(repeat_D)                
-            repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
+                repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
             
         #if the validity of the locus hasn't been determined yet, include the information
         if len(loci_checked[contig_Acc + "-" + str(crispr)]) < 5:
