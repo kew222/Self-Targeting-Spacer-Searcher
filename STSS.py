@@ -1486,7 +1486,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         spacers_align = AlignInfo.SummaryInfo(alignment)
         consensus_spacer = spacers_align.dumb_consensus()                 
         spacers_pssm = spacers_align.pos_specific_score_matrix(consensus_spacer, chars_to_ignore = ['N'])
-        print(spacers_pssm)
         #Now start at the beginning of the spacer consensus and step forward looking for overrepresented bases
         if len(spacers) > 4:
             overrep_percent = 0.75 #This number represents what the cutoff is for indentifying mistakes in the repeats - heuristic
@@ -1517,17 +1516,17 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                         break
                 if not strong_homology:
                     break
-             
+                      
         #Next, if either move statistic is greater than 0, remake the spacers and repeats lists with the correct sequences
         repeats_temp = []; i = 0
         for repeat in repeats:
             if i == 0: 
                 repeats_temp.append(repeat + spacers[i][:move_F_len])              
             elif i < len(spacers): 
-                repeats_temp.append(spacers[i-1][len(spacers[i-1])-move_R_len-1:len(spacers[i-1])] + repeat + spacers[i][:move_F_len])
+                repeats_temp.append(spacers[i-1][len(spacers[i-1])-move_R_len:len(spacers[i-1])] + repeat + spacers[i][:move_F_len])
             else:
-                repeats_temp.append(spacers[i-1][len(spacers[i-1])-move_R_len-1:len(spacers[i-1])] + repeat)
-            i += 1             
+                repeats_temp.append(spacers[i-1][len(spacers[i-1])-move_R_len:len(spacers[i-1])] + repeat)
+            i += 1
         
         repeats = repeats_temp
         spacers_temp = []
@@ -1693,6 +1692,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         if error != "":
             print(error)
             sys.exit()        
+        
         #Parse the output to find the direction of the alignment (if there was one)
         Type_repeat = "Repeat not recognized"; repeat_direction = 0
         expression1 = re.compile("\s+E-value\s+score\s+bias")   #find the table labels for the data
@@ -1703,7 +1703,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 if data_string == "": #No hits found
                     break
                 repeat_group = data_string.strip().split()[3]  #The repeat group is the 4th position
-                repeat_direction = int(data_string.strip().split()[4]) - int(data_string.strip().split()[5]) 
+                repeat_direction = int(data_string.strip().split()[5]) - int(data_string.strip().split()[4]) #positive means CRT and HMM direction match
                 #Use the identified group to guess at the Type
                 if repeat_group[-1] == 'R':  #Removes the R designation that was added to indicate where the original REPEATS data was backward
                     repeat_group = repeat_group[:-1]
@@ -1785,10 +1785,12 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             elif repeat_direction < 0:
                 array_direction = "CRT orientation wrong (sequences reversed, determined with {0})".format(extra_details)
         #If there is a consensus direction, and it's backward, flip the array
-        if repeat_direction == -1:
+        if repeat_direction < 0:
             #Need to flip spacer sequence, PAM sequences, consensus Repeat
-            PAM_seq_up = str(Seq(PAM_seq_up).reverse_complement())                
-            PAM_seq_down = str(Seq(PAM_seq_down).reverse_complement())    
+            PAM_seq_up = str(Seq(PAM_seq_up).reverse_complement())           
+            temp_seq = PAM_seq_up
+            PAM_seq_up = str(Seq(PAM_seq_down).reverse_complement())    
+            PAM_seq_down = temp_seq          
             consensus_repeat = str(Seq(consensus_repeat).reverse_complement())                
             spacer_seq = str(Seq(spacer_seq).reverse_complement())                
             
