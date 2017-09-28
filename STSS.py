@@ -2419,6 +2419,9 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
         except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
             time.sleep(3)  #wait 3 seconds before retrying
             pass    
+        except requests.exceptions.ChunkedEncodingError:
+            time.sleep(3)  #wait 3 seconds before retrying
+            pass  
         
     #Write the PHASTER results to a file
     with open(PHASTER_file, "w") as jot_notes:
