@@ -244,9 +244,9 @@ def load_provided(provided_dir,num_limit,complete_only):
         try:
             record = SeqIO.read(it,"fasta")  #will fail if WGS or not fasta
             try:
-                name = record.id.split(" ")[0]   #try to get NCBI formatted Accession # out of header
+                name = record.id.split(" ")[0].strip()   #try to get NCBI formatted Accession # out of header
             except:
-                name = record.id
+                name = record.id.strip()
             fastanames[name] = [it, "provided","complete"]    
             provided_complete_counter += 1
         except ValueError:
@@ -900,9 +900,9 @@ def get_loci(CRISPR_results,fastanames,affected_genomes={}):
             elif fastanames[genome[1]][1] == 'provided':
                 try:
                     if "|" in lines[0].split("ORGANISM:  ")[1]:
-                        spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split("|")[0], 'lookup', 'WGS']])  #Try to get the accession number (will be there if using NCBI formatted headers)  
+                        spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split("|")[0].strip(), 'lookup', 'WGS']])  #Try to get the accession number (will be there if using NCBI formatted headers)  
                     else:
-                        spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split(" ")[0], 'provided', 'WGS']])  #otherwise, take the provided name in fasta
+                        spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split(" ")[0].strip(), 'provided', 'WGS']])  #otherwise, take the provided name in fasta
                 except:
                     spacer_data.append([[lines[0].split("ORGANISM:  ")[1].strip(), 'provided', 'WGS']])  #otherwise, take the provided name in fasta
             CRISPR_positions = []
@@ -944,7 +944,7 @@ def spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_
             #search_for = genome[0].split(".")[0]
             queryfilename = "queries/" + genome[0][0].split(".")[0] +"_queries.txt"
         else: 
-            subject = fastanames[genome[0][0].split(' ')[0]][0]  #pulls up the file for the name provided or accession # if looked up
+            subject = fastanames[genome[0][0].split(' ')[0].strip()][0]  #pulls up the file for the name provided or accession # if looked up
             queryfilename = "queries/" + genome[0][0].split(".")[0] +"_queries.txt"         
         temp_lines = []
         for CRISPR_counter in range(1,len(num_loci[num])+1):
@@ -1893,7 +1893,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                 try:
                     contig_list.append(line.split("|")[1].strip())
                 except:
-                    contig_list.append(line.split(" ")[0].replace(">",""))  #skip the opening caret
+                    contig_list.append(line.split(" ")[0].replace(">","").strip())  #skip the opening caret
         contig_Accs[key] = contig_list
     
     blast_results_filtered_summary = []
@@ -1928,6 +1928,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                         #Getting here suggests that the genome does not have the master|contig format, so will try to find the master using the contig_Accs
                         try:
                             Acc_num_self_target = handle[1].strip().split(" ")[0]  #try to store the name this way if sequence was provided
+                            #Acc_num = Acc_num_self_target
                             for key,value in contig_Accs.iteritems():  #try a reverse dictionary lookup to find the WGS master
                                 if Acc_num_self_target in value:
                                     Acc_num = key
