@@ -813,7 +813,6 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir,prefix):
                     names.append(">" + str(fasta.name) + "\n")
                     sequences.append(str(fasta.seq) +"\n")
             for seq in sequences:
-                pos_adjust = 0
                 if Ns in seq:
                     if affected_lines == []:
                         print('Long string of Ns in {0}. Modifying fasta file. Positions will be adjusted...'.format(fastaname))
@@ -825,13 +824,14 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir,prefix):
                     adj_leng = 200  #number of Ns to remove in a chunk
                     while Ns_position != -1:
                         Ns_position_orig = Ns_position
+                        pos_adjust = 0
                         while Ns_position == Ns_position_orig:
                         #Find where the Ns are, and remove 200 then note that the positions have been altered by 200, then repeat and look for again
                             seq_temp = seq_temp[:Ns_position] + seq_temp[Ns_position+adj_leng:]
                             pos_adjust += adj_leng
                             Ns_position = seq_temp.find(Ns)
                         sequences[line_no] = seq_temp
-                    affected_lines.append([abs_pos+Ns_position_orig,pos_adjust])  #will store where the replacements are occuring  
+                        affected_lines.append([abs_pos+Ns_position_orig,pos_adjust])  #will store where the replacements are occuring  
                 abs_pos += len(sequences[line_no].strip()) + len(names[line_no].strip())
                 line_no += 1
             if affected_lines != []:
@@ -1788,7 +1788,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         #NOTE: this needs to be correcteed later because 
         try:
             Ns_removed = affected_genomes[Acc_num]  #this will give a key error if the genome isn't Ns masked
-            alt_alignment = correct_spacers_for_Ns(alt_alignment,Ns_removed,alt_align_subtract)
+            alt_alignment = correct_spacers_for_Ns(alt_alignment,Ns_removed,alt_align_subtract,False)
         except KeyError:  #if not an affected genome
             pass 
         
@@ -1827,7 +1827,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                                                                         
         return PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive
 
-def correct_spacers_for_Ns(spacer_pos,Ns_removed,contig_start):
+def correct_spacers_for_Ns(spacer_pos,Ns_removed,contig_start,align_locus_correction = False):
     
     corrected_Ns_removed = []
     for Ns in Ns_removed:
@@ -1835,9 +1835,13 @@ def correct_spacers_for_Ns(spacer_pos,Ns_removed,contig_start):
     
     #Need to add the number of Ns removed upstream of the spacer position to its position value
     adjust_val = 0
+    if align_locus_correction:
+        position = spacer_pos - contig_start
+    else:
+        position = spacer_pos
     for line in corrected_Ns_removed:
-        if spacer_pos >= line[0] >= 0:
-            adjust_val += line[1]    
+        if position >= line[0] >= 0:
+            adjust_val += line[1] 
         elif line[0] >= 0:
             break
     spacer_pos += adjust_val 
@@ -1963,7 +1967,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                 #Need to a correct spacer values if there are Ns that were masked
                                 try:
                                     Ns_removed = affected_genomes[Acc_num]  #this will give a key error if the genome isn't Ns masked
-                                    align_locus = correct_spacers_for_Ns(align_locus,Ns_removed,0)    
+                                    align_locus = correct_spacers_for_Ns(align_locus,Ns_removed,0,True)    
                                 except KeyError:  #if not an affected genome
                                     pass  
                                 break    
@@ -2017,7 +2021,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                         if align_locus < contig_lengths[contig_num+1]:
                                             try:
                                                 Ns_removed = affected_genomes[Acc_num]  #this will give a key error if the genome isn't Ns masked
-                                                align_locus = correct_spacers_for_Ns(align_locus,Ns_removed,contig_lengths[contig_num])    
+                                                align_locus = correct_spacers_for_Ns(align_locus,Ns_removed,contig_lengths[contig_num],True)    
                                             except KeyError:
                                                 pass
                                             align_locus -= contig_lengths[contig_num]
@@ -2026,7 +2030,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                         elif contig_num == len(contig_lengths) - 2:  #At the second to last contig (but align_locus is larger), means contig is last position
                                             try:
                                                 Ns_removed = affected_genomes[Acc_num]  #this will give a key error if the genome isn't Ns masked
-                                                align_locus = correct_spacers_for_Ns(align_locus,Ns_removed,contig_lengths[contig_num+1])    
+                                                align_locus = correct_spacers_for_Ns(align_locus,Ns_removed,contig_lengths[contig_num+1],True)    
                                             except KeyError:
                                                 pass
                                             align_locus -= contig_lengths[contig_num+1]
