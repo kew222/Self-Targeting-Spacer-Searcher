@@ -792,8 +792,10 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir,prefix):
     bad_genomes = []
     affected_genomes = {}
     Ns = "N"*500
-    if os.path.isfile("genomes_with_long_stretches_of_Ns.txt"):
-        os.remove("genomes_with_long_stretches_of_Ns.txt")
+    try: 
+        os.remove("{0}genomes_with_long_stretches_of_Ns.txt".format(prefix))
+    except:
+        pass
     for fastaname, holder in fastanames.iteritems():
         good_genome = True
         filein = holder[0]
