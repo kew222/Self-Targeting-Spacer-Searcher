@@ -1400,7 +1400,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         need_locus_info = True    #Need to determine the information and add to the dictionary
 
     if false_positive:
-        return ["" for x in range(0,12)] + [True] #return a blank set to calling function, essentially 'skipping' this array (it won't be included after anyway)
+        return ["" for x in range(0,15)] + [True] #return a blank set to calling function, essentially 'skipping' this array (it won't be included after anyway)
     else:
         #Get the sequence for the contig (or genome) containing the self-targeting spacer match
         sequence,fastaname = fetch_sequence(fastanames,Acc_num,self_target_contig,provided_dir)
@@ -1512,11 +1512,13 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         #Do a check to see if it's false positive (direct repeat for example). If most of the spacers are now under the min length cutoff (from too much homology)
         i = 0 
         for spaceri in spacers:
-            if len(spaceri) > 18:
+            if len(spaceri) < 18:
                 i += 1
-        if i > len(spacers):
+        if i >= 0.25 * len(spacers):  #If 25% of the corrected spacers are under 18, reject as a false array
             false_positive = True    
-            print("CRISPR array {0} in {1} does not appear to be an array upon re-analysis, skipping...".format(crispr,Acc_num))  
+            loci_checked[contig_Acc + "-" + str(crispr)] = ["Missing genbank formatted data","","","","","",false_positive]
+            print("CRISPR array {0} in {1} does not appear to be an array upon re-analysis, skipping...".format(crispr,Acc_num))
+            return ["" for x in range(0,15)] + [True]  
         
         if not false_positive:
             #Adjust the known spacer 
