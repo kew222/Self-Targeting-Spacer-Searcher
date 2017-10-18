@@ -185,10 +185,7 @@ class Params:
             raise Usage(help_message)       
         elif search != '' and Accs_input != '':
             print("Search and Accession# input are not compatible, please select one.\n") 
-            raise Usage(help_message)    
-        
-        if not os.path.exists('{0}temp'.format(prefix)):
-            os.mkdir('{0}temp'.format(prefix))                    
+            raise Usage(help_message)                      
                                                                                                                              
         return args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD
 
@@ -337,9 +334,12 @@ def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
 def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],simple_return=True):
     
     #Because the number of links can exponentially grow from the genome links, split off and do in chunks
-    assembly_chunk_size = 5
+    assembly_chunk_size = 10; activity_ticker = 0
     for chunk in range(0,len(assemblies),assembly_chunk_size):
         assemblies_chunk = assemblies[chunk:chunk+assembly_chunk_size]  
+        activity_ticker += 1
+        if activity_ticker % 10 == 0:
+            print("Still working, linking group {0} of {1} to nucleotide...".format(activity_ticker,len(range(0,len(assemblies),assembly_chunk_size))))
         
         attempt_num = 1
         while True:
@@ -564,7 +564,7 @@ def get_Accs(IDs):
         
     return Accs
          
-def download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],fastanames={},ask=False):
+def download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],fastanames={},ask=False,prefix=''):
 
     if total > num_limit:
         extra_text = " Preparing to download only {0}.".format(num_limit)
@@ -580,13 +580,13 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
         extra_text = " Preparing to download only the first {0}.".format(num_limit)
         print("Found {0} genome(s) searching for '{1}'.".format(num_genomes,search) + extra_text)
     
-    if not os.path.exists("downloaded_genomes"):
-            os.mkdir("downloaded_genomes")
+    if not os.path.exists("{0}downloaded_genomes".format(prefix)):
+            os.mkdir("{0}downloaded_genomes".format(prefix))
     num_downloaded = 0
     
     #Filter out genomes that have already been downloaded, unless forced re-download
     if not redownload:
-        files = glob.glob(current_dir+"downloaded_genomes/*.*")   #gets all files in the genome directory
+        files = glob.glob(current_dir+"{0}downloaded_genomes/*.*".format(prefix))   #gets all files in the genome directory
         if provided_dir != '':
             files += glob.glob(provided_dir + "/*.*")   #gets all files in the provided directory to prevent doubles
         files_in_dir = {}
@@ -717,7 +717,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
             attempt += 1
         for index in range(0,len(IDs)):
             Acc_num = data[index].split(" ")[0][1:]
-            filename = current_dir+"downloaded_genomes/" + Acc_num.split(".")[0] + ".fasta"
+            filename = current_dir+"{0}downloaded_genomes/".format(prefix) + Acc_num.split(".")[0] + ".fasta"
             fastanames[Acc_num] = [filename, "lookup","complete"]
             with open(filename, "w") as output:
                 output.write(data[index]) 
@@ -761,7 +761,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
         if data != []:
             Acc_num = wgs_masters_Acc[WGS_num]
             pieces = data.split("\n\n")
-            filename = current_dir+"downloaded_genomes/" + Acc_num.split('.')[0] + ".fasta"
+            filename = current_dir+"{0}downloaded_genomes/".format(prefix) + Acc_num.split('.')[0] + ".fasta"
             fastanames[Acc_num] = [filename, "lookup", "WGS"]                 
             
             with open(filename, "w") as output:                         #(other catches later will recognize the Accession #)
@@ -2261,6 +2261,9 @@ def label_self_target(target_protein,feature_num):
 
 def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,prefix,CDD=False,ask=False):
 
+    if not os.path.exists('{0}temp'.format(prefix)):
+            os.mkdir('{0}temp'.format(prefix))  
+            
     if num_limit == 0:
         num_limit = default_limit        
     
@@ -2277,7 +2280,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_l
         #Download the appropriate genomes
         if provided_dir == '':
             fastanames = {}
-        fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask)
+        fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask,prefix)
 
     #Search each genome for CRIPSR repeat-spacers
     CRISPR_results, affected_genomes = spacer_scanner(fastanames,bin_path,repeats,current_dir,prefix)
