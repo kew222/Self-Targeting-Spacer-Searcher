@@ -50,7 +50,7 @@ Options
 
 
 def get_version():
-    return "0.0.1"
+    return "1.0.0"
 
 class Usage(Exception):
     def __init__(self,msg):
@@ -285,8 +285,8 @@ def main(argv=None):
             for genome in (complete_IDs+wgs_master_GIs):
                 file1.write(genome + "\n")       
         
-        num_limit = 10000; search = ""; redownload=False; provided_dir=""; fastanames={}  #variables required for download, set to defaults
-        fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,False,prefix)
+        search = ""; redownload=False; provided_dir=""; fastanames={}  #variables required for download, set to defaults
+        fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search_string,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,False,prefix)
         
         #Use the provided genomes pathway to run self-targeting search
         provided_dir = "{0}downloaded_genomes/".format(prefix)
