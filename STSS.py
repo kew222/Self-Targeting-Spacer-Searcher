@@ -2224,7 +2224,7 @@ def CDD_homology_search(check_list):
             statuscode = -1    #this status code that indicates still waiting for a response
         
         if statuscode in ('1','4','5'):
-            print("Error in protein homology search. Skipping entry...")    
+            print("Error in protein homology search. Retrying...")    
         elif statuscode == '2':
             #nothing to check, should be caught above
             break
