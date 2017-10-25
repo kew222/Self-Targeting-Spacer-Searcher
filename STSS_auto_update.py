@@ -31,15 +31,12 @@ Options
 
 -o, --prefix <string>           Prefix for filenames in output (ex. prefix of 'bagel' gives: bagel_Spacers...islands.txt)
 -f, --force-redownload          Forces redownloading of genomes that were already downloaded
--l, --limit <N>                 Limit Entrez search to the first N results found (default: 1000)
+-l, --limit <N>                 Limit Entrez search to the first N results found (default: 10000)
 --CDD                           Use the Conserved Domain Database to identify Cas proteins (default is to use HMMs)
 --complete-only                 Only return complete genomes from NCBI
 -E, --E-value  <N>              Upper limit of E-value to accept BLAST results as protein family (default: 1e-3)
 --percent-reject <N>            Percentage (of 100%) to use a cutoff from the average spacer length to reject validity of a proposed locus (default 40)
 
---all-islands                   Include all unknown proteins found within a predicted MGE
---outside-islands               Include proteins from predicted MGEs when the spacer is outside a predicted MGE island
-                                (automatically includes --all-islands option)
 -s, --spacers <N>               Number of spacers needed to declare a CRISPR locus (default: 3)
 --pad-locus <N>                 Include a buffer around a potential locus to prevent missed repeats from
                                 appearing as hits (default: 100)
@@ -66,14 +63,8 @@ class Params:
             opts, args = getopt.getopt(argv[1:], "hvE:l:s:fe:o:d:",
                                        ["limit=",
                                        "help",
-                                       "all-islands",
-                                       "outside-islands",
                                        "E-value=",
                                        "spacers=",
-                                       "NCBI",
-                                       "skip-family-search",
-                                       "families-limit=",
-                                       "cluster-search",
                                        "pad-locus=",
                                        "force-redownload",
                                        "percent-reject=",
@@ -93,14 +84,12 @@ class Params:
         search = ''
         provided_dir = ''
         Accs_input = ''
-        default_limit = 1000000
+        default_limit = 10000
         num_limit = 1000000
         E_value_limit = 1e-3
         all_islands = False
         in_islands_only = True
-        repeats = 4  #zero indexed (actually 3)
-        skip_family_search = False
-        families_limit = 300
+        repeats = 4  #zero indexed (corresponds to 3 spacers)
         pad_locus = 40
         skip_family_create = True
         complete_only = False
@@ -201,8 +190,8 @@ def main(argv=None):
                     search_list = exclude_genomes[piece:piece+query_chunk]
                 else:                
                     search_list = exclude_genomes[piece:len(exclude_genomes)]
-                found_nucleotide = NCBI_search(", ".join(search_list),"nucleotide",num_limit=100000,tag="",exclude_term="")
-                found_assemblies = link_nucleotide_to_assembly(found_nucleotide,assemblies=[],num_limit=100000)
+                found_nucleotide = NCBI_search(", ".join(search_list),"nucleotide",num_limit=1000000,tag="",exclude_term="")
+                found_assemblies = link_nucleotide_to_assembly(found_nucleotide,assemblies=[],num_limit=1000000)
                 excluded_assemblies += found_assemblies
                 i+= 1
                                 
