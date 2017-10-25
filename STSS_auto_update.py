@@ -83,19 +83,14 @@ class Params:
         update_group_file = ''
         search = ''
         provided_dir = ''
-        Accs_input = ''
         default_limit = 10000
         num_limit = 1000000
         E_value_limit = 1e-3
-        all_islands = False
-        in_islands_only = True
         repeats = 4  #zero indexed (corresponds to 3 spacers)
         pad_locus = 40
-        skip_family_create = True
         complete_only = False
         skip_PHASTER = False
         rerun_PHASTER = False
-        skip_alignment = True
         PHASTER_input_file = ''
         percent_reject = 40
         redownload = False
@@ -106,7 +101,7 @@ class Params:
         
         for option, value in opts:
             if option in ("-v", "--version"):
-                print "anti_CRISPR_miner.py v%s" % (get_version())
+                print "STSS_auto_update.py v%s" % (get_version())
                 exit(0)
             if option in ("-h", "--help"):
                 raise Usage(help_message)  
@@ -114,17 +109,10 @@ class Params:
                 num_limit = int(value)   
             if option in ("-E", "--E-value"):
                 E_value_limit = float(value)     
-            if option == "--all-islands":
-                all_islands = True
-            if option == "--outside-islands":
-                in_islands_only = False  
-                all_islands = True
             if option in ("-s","--spacers"):
                 repeats = int(value) + 1 
             if option == "--pad-locus":
                 pad_locus = int(value) 
-            if option in ('c',"--cluster-search"):
-                skip_family_create = False 
             if option == "--complete-only":
                 complete_only = True   
             if option == "--skip-PHASTER":
@@ -144,7 +132,7 @@ class Params:
             print("Wrong number of arguments, received {0}, should be exactly 1: the search string.".format(len(args)))
             raise Usage(help_message)   
             
-        return args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,skip_alignment,exclude_file,update_group_file,Accs_input,CDD,Cas_gene_distance,prefix
+        return args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix
     
     def check(self):
         pass
@@ -168,7 +156,7 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,skip_alignment,exclude_file,update_group_file,Accs_input,CDD,Cas_gene_distance,prefix = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix = params.parse_options(argv)
             params.check()
         
         search_string = args[0]
