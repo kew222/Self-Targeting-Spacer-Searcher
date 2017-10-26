@@ -1655,9 +1655,6 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             PAM_seq_up = target_subseq[s_lower-9:s_lower]
             PAM_seq_down = target_subseq[s_upper:s_upper+9]
             
-            #Old PAM code, currently not in use
-            #PAM_seq_up,PAM_seq_down = get_PAMs(direction,alt_alignment,sequence) 
-        
         #Determine the orientation of the array. First try to align the repeat, then look for Cas proteins nearby and assume that the Cas proteins are upstream
         #Check the consensus repeat against the HMM list
         
@@ -1787,6 +1784,28 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,Type_repeat,proteins_identified,Cas_search,array_direction,false_positive]
             except UnboundLocalError:
                loci_checked[contig_Acc + "-" + str(crispr)] = ["Missing genbank formatted data","","","","",array_direction,false_positive]
+        
+        #One other way to check for false positives is to examine the PAM sequences
+        #If a false positive, either PAM sequence may align with either end of the consensus sequence
+        #NOTE: this will NOT throw out the whole array, but only skip this spacer
+        #Here, check for an 8/9 match of the PAM sequence (upstream PAM matches 3' end of repeat, downstream PAM matches 5') - this corresponds to a ~1/65000 random chance of occurring
+        errors_allowed = 1; pos = 0; errors_accum = 0
+        for PAM_seq in (PAM_seq_down,PAM_seq_up):
+            if pos == 0:
+                consensus_r = consensus_repeat[:9]
+            else:
+                consensus_r = consensus_repeat[-9:]
+                pos = 0; errors_accum = 0
+            for letter in consensus_r:
+                try:
+                    if letter == PAM_seq[pos]:
+                        errors_accum += 1
+                except IndexError:
+                    break
+                if errors_accum >= 9 - errors_allowed:  #if 8/9 match, reject
+                    print("Spacer {0} in CRISPR array {0} in {1} appears to be a false-positive (PAM matches repeat), skipping...".format(spacer, crispr))
+                    return ["" for x in range(0,15)] + [True]   #The false here will cause the spacer to be skipped, but not record the array as a false in case other spacers in the array are ok.
+                pos += 1        
         
         #May need to adjust the alt_alignment length if there are Ns masked from CRT
         #NOTE: this needs to be correcteed later because 

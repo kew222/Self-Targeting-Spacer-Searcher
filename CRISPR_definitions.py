@@ -18,7 +18,7 @@
 CRISPR_types = {
 
                 "Type I-A":[["Cas6"],["Csa5"],["Cas7"],["Cas5"],["Cas8a1","Cas8a2","Csa4","Csx9"],["Cas3'"],["Cas3''"],["Cas2"],["Cas4","Csa1"],["Cas1"],["Cas4"]],
-                "Type I-B":[["Cas6"],["Cas8b1","Csh1"],["Cas7"],["Cas5"],["Cas3"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
+                "Type I-B":[["Cas6"],["Cas8b1","Csh1"],["Cas7","Cst2"],["Cas5"],["Cas3"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
                 "Type I-C":[["Cas3"],["Cas5"],["Cas8c","Csd1","Csp2"],["Cas7"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
                 "Type I-U":[["Cas3"],["Cas8c"],["Cas7"],["Cas5","GSU0054"],["Cas6"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
                 "Type I-D":[["Cas3'"],["Cas3''"],["Cas10d","Csc3"],["Cas7","Csc2"],["Cas5","Csc1"],["Cas6"],["Cas4"],["Cas1"],["Cas2"]],
@@ -37,9 +37,9 @@ CRISPR_types = {
                 
                 "Type IV-A":[["dinG","Csf4"],["Csf1"],["Cas7","Csf2"],["Cas5","Csf3"]],
                 
-                "Type V-A":[["Cpf1"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
-                "Type V-B":[["C2c1"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
-                "Type V-C":[["Cas1"],["C2c3"]],
+                "Type V-A":[["Cas12a","Cpf1"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
+                "Type V-B":[["Cas12b","C2c1"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
+                "Type V-C":[["Cas1"],["Cas12c","C2c3"]],
                 
                 "Type VI-A":[["Cas13a1","C2c2"],["Cas1"],["Cas2"]],
                 "Type VI-B":[["Cas13b","C2c2"],["Csx27"],["Csx28"],["Cas1"],["Cas2"]],
@@ -79,7 +79,7 @@ Cas_proteins =  {
                 "Csm5":["Type III-A"],
                 "Csm6":["Type III-A"],
                 "Cst1":["Type I-G"],
-                "Cst2":["Type I-G"],
+                "Cst2":["Type I-G","Type I-B"],
                 "Csx9":["Type I-A"],
                 "Csx10":["Type III-D"],
                 "Cmr1":["Type III-B","Type III-C"],
