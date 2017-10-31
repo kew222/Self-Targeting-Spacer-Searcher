@@ -1361,7 +1361,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,prefix,CDD=False)
     re_analyzed_data = []
     for result in imported_data:
         contig_Acc = result[1]  #locus Acc number
-        align_locus = result[9]  #alignment position of the self_targeting spacer in the CRISPR locus  
+        align_locus = result[10]  #alignment position of the self_targeting spacer in the CRISPR locus  
         print("Reanalyzing locus found in {0}...".format(contig_Acc))
         contig_filename = contig_Acc.split(".")[0] + ".gb"
         if os.path.isfile("GenBank_files/{0}.gb".format(contig_filename)):
@@ -1376,7 +1376,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,prefix,CDD=False)
                 proteins += ", " + ", ".join(Cas_search[2:])
         else:  
             proteins = Cas_search[0]
-        re_analyzed_data.append(result[:3] + [Type] + [Cas_search] + [proteins_identified] + result[6:])
+        re_analyzed_data.append(result[:3] + [Type] + result[4] + [Cas_search] + [proteins_identified] + result[7:])
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
@@ -1581,7 +1581,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             with open(query_file, "w") as file1:
                 file1.write(">Query_Sequence\n{0}\n".format(spacer_seq))
             #Then write the subject file with a subsequence near the aligned position
-            pad_size = 60
+            pad_size = len(spacer_seq) + 10
             lower = max(alt_alignment-pad_size,0)  #adjust for padding making an index that goes off the edge of the contig
             upper = min(alt_alignment+len(spacer_seq)+pad_size,len(sequence))
             target_subseq = sequence[lower:upper]   #creates a subsequence to search where the target is known to occur with some padding
@@ -1591,27 +1591,41 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             with open(subject_file, "w") as file1:
                 file1.write(">Subject_Sequence\n{0}\n".format(target_subseq))
  
+            output_format = 6   #originally coded with output format 4, but doesn't allow for as rigid control of single alignments
             #Then align the spacer sequence to the subsection
-            blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt 4 -max_target_seqs 1 -word_size 7 -ungapped -strand plus".format(bin_path,query_file,subject_file)
+            blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt {3} -max_target_seqs 1 -word_size 7 -ungapped -strand plus".format(bin_path,query_file,subject_file,output_format)
             handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = handle.communicate()
             #Now look up what part of the spacer aligns, and extend the alignment in both directions
             #Because CRISPR alignment will not allow for indels, assume that stuck in register of best alignment
             #In reality, one end or the other of the spacer will be more important, but the best alignment is not in the same register as the PAM/seed region, it probably can't bind anyway
             
-            expression1 = re.compile("Query_\d+")
-            expression2 = re.compile("Subject_\d+")
-            for line in output.split('\n'):
-                a = expression1.match(line)
-                if a is not None:
-                    ext_lower = int(line.split()[1]) - 1
-                    ext_upper = len(spacer_seq) - int(line.split()[3])
-                b = expression2.match(line)
-                #Find the alignment in the subject, and extend either way to get the whole string
-                if b is not None:
-                    s_lower = int(line.split()[1]) - ext_lower - 1 #1 is added for indexing adjustment (1 -> 0)
-                    s_upper = int(line.split()[3]) + ext_upper
-                    break
+            #Used for output format 4
+            if output_format == 4:
+                expression1 = re.compile("Query_\d+")
+                expression2 = re.compile("Subject_\d+")
+                for line in output.split('\n'):
+                    a = expression1.match(line)
+                    if a is not None:
+                        ext_lower = int(line.split()[1]) - 1
+                        ext_upper = len(spacer_seq) - int(line.split()[3])
+                    b = expression2.match(line)
+                    #Find the alignment in the subject, and extend either way to get the whole string
+                    if b is not None:
+                        s_lower = int(line.split()[1]) - ext_lower - 1 #1 is added for indexing adjustment (1 -> 0)
+                        s_upper = int(line.split()[3]) + ext_upper
+                        break
+            elif output_format == 6:
+                expression1 = re.compile("Query_")
+                for line in output.split('\n'):
+                    a = expression1.match(line)
+                    if a is not None:
+                        ext_lower = int(line.split('\t')[6]) - 1
+                        ext_upper = len(spacer_seq) - int(line.split('\t')[7])
+                        s_lower = int(line.split('\t')[8]) - ext_lower - 1 #1 is added for indexing adjustment (1 -> 0)
+                        s_upper = int(line.split('\t')[9]) + ext_upper
+                        break
+            
             #Take the gapless alignment and get the full subject subsequence
             if s_lower < 0 and s_upper > len(target_subseq):
                 subject_subseq = target_subseq[0:len(target_subseq)]
