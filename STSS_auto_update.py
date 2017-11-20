@@ -198,16 +198,15 @@ def main(argv=None):
         for ID in all_assemblies:
             if ID not in excluded_assemblies:
                 filtered_assemblies.append(ID)
-        excluded_assemblies = []  #clear memory
-        
         #Print out a list of the assemblies to be downloaded and excluded
         with open("{0}assembly_uids_to_be_downloaded.txt".format(prefix), "w") as file1:
             for assembly in filtered_assemblies:
                 file1.write(assembly + "\n")       
         with open("{0}excluded_assembly_uids_found.txt".format(prefix), "w") as file1:
-            for assembly in filtered_assemblies:
+            for assembly in excluded_assemblies:
                 file1.write(assembly + "\n")       
-    
+        excluded_assemblies = []  #clear memory
+        
         #Remove duplicate assembly numbers
         filtered_assemblies = list(set(filtered_assemblies))                    
         print("{0} of {0} genomes found need to be downloaded.".format(len(filtered_assemblies),len(all_assemblies)))
