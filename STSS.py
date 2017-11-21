@@ -56,6 +56,8 @@ Options
 -n, --no-ask                    Force downloading of genomes regardless of number found (default: ask)
 -l, --limit <N>                 Limit Entrez search to the first N results found (default: 10000)
 --CDD                           Use the Conserved Domain Database to identify Cas proteins (default is to use HMMs)
+--Cas-HMMs <filename>           Use the provided HMMs for the Cas proteins instead of the provided set 
+--repeat-HMMs <filename>        Use the provided HMMs for the repeat prediction instead of the provided set 
 --complete-only                 Only return complete genomes from NCBI
 --rerun-loci <filename>         Rerun the locus annotater to recheck the nearby locus for Type and completeness from provided sapcer search results file                   
 -E, --E-value  <N>              Upper limit of E-value to accept BLAST results as protein family (default: 1e-4)
@@ -69,6 +71,9 @@ Options
 --skip-PHASTER                  Skip PHASTER analysis (currently can't upload search files)                                
 -p, --rerun-PHASTER <filename>  Rerun PHASTER to recheck islands from provided Spacer search results file
 
+**Note:
+    When using custom HMMs, please make sure the files are in the HMMs/ directory and end in .hmm
+    
 '''
 
 loci_checked = {}
@@ -99,6 +104,8 @@ class Params:
                                        "E-value=",
                                        "spacers=",
                                        "NCBI",
+                                       "Cas-HMMs=",
+                                       "repeat-HMMs=",
                                        "pad-locus=",
                                        "Cas-gene-distance=",
                                        "no-ask",
@@ -116,6 +123,8 @@ class Params:
         num_limit = 0
         E_value_limit = 1e-4
         provided_dir = ''
+        protein_HMM_file = "Cas.407_XY9n.hmm"
+        repeat_HMM_file = "Repeats_groups/REPEATS_families_corrected.hmm"
         search = ''
         Accs_input = ''
         rerun_loci = False
@@ -151,6 +160,10 @@ class Params:
                 search = value  
             if option == "--Accs":
                 Accs_input = value
+            if option == "--Cas-HMMs":
+                protein_HMM_file = value
+            if option == "--repeat-HMMs":
+                repeat_HMM_file = value
             if option == "--rerun-loci":
                 rerun_loci = True
                 spacer_rerun_file = value
@@ -176,7 +189,7 @@ class Params:
                 redownload = True   
             if option in ("-n","--no-ask"):
                 ask = False  
-                                                                           
+                                                                                                                                              
         if len(args) != 0:
             raise Usage(help_message)    
                 
@@ -187,7 +200,7 @@ class Params:
             print("Search and Accession# input are not compatible, please select one.\n") 
             raise Usage(help_message)                      
                                                                                                                              
-        return args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD
+        return args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file
 
 def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
     
@@ -1082,7 +1095,7 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
         record = SeqIO.read(genfile_name, 'genbank')
     return record    
     
-def find_Cas_proteins(align_pos,record,HMM_dir,prefix,CDD=False,Cas_gene_distance=20000):
+def find_Cas_proteins(align_pos,record,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,Cas_gene_distance=20000):
     
     #Define the region to examine coding regions
     if Cas_gene_distance == 0:
@@ -1155,7 +1168,7 @@ def find_Cas_proteins(align_pos,record,HMM_dir,prefix,CDD=False,Cas_gene_distanc
             short_names = CDD_homology_search(check_list)   #Note: order of the Cas genes is not preserved, only checks if all are present
         else:
             #Otherwise the default is search the protein sequences with HMMER to see if they are Cas proteins
-            short_names = HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,HMM_dir)
+            short_names = HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file,repeat_HMM_file)
         
         for short_name in short_names:    
             is_Cas,protein_name,types_list = is_known_Cas_protein(short_name.split('\t')[1],types_list)
@@ -1271,7 +1284,7 @@ def find_spacer_target(Acc_num_target,alt_alignment):
         self_targets = [["----No genbank file", "skipped----"]]    
     return self_targets               
     
-def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,prefix,CDD=False):                   
+def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,repeat_HMM_file,prefix,CDD=False):                   
     global all_contigs_checked
     global Cas_gene_analysis_dict
                    
@@ -1309,7 +1322,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,pref
                 else:
                     record = download_genbank(genome_Acc)
                 print("Checking {0} contig for Cas proteins...".format(genome_Acc))
-                proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,HMM_dir,prefix,CDD,Cas_gene_distance)
+                proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,protein_HMM_file,repeat_HMM_file,prefix,CDD,Cas_gene_distance)
                 all_proteins_identified += proteins_identified
                 all_types_list += types_list
                 total_up_down += up_down
@@ -1322,7 +1335,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,pref
         
     else:
         #Find Cas proteins near the spacer-repeat region
-        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,HMM_dir,CDD,Cas_gene_distance)
+        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,protein_HMM_file,repeat_HMM_file,CDD,Cas_gene_distance)
     
     #Determine what Type the locus is
     Type = Type_check(types_list)
@@ -1355,7 +1368,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,pref
     
     return Type,Cas_search,renamed_proteins_identified,types_list,up_down                            
  
-def locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,prefix,CDD=False):
+def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD=False):
     
     print("Note! Genbank files are going to be downloaded. Remove them after if unwanted.")
     re_analyzed_data = []
@@ -1368,7 +1381,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,prefix,CDD=False)
             record = SeqIO.read(contig_filename, 'genbank')
         else:
             record = download_genbank(contig_Acc)
-        Type,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,prefix,CDD)
+        Type,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,repeat_HMM_file,prefix,CDD)
         #Convert the Cas protein search results into a printable string       
         if len(Cas_search) > 1:
             proteins = "".join(Cas_search[:2])
@@ -1380,7 +1393,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,prefix,CDD=False)
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
-def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,contig_lengths,affected_genomes,alt_align_subtract,bin_path,HMM_dir,prefix,CDD=False,repeats=4):   
+def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,contig_lengths,affected_genomes,alt_align_subtract,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,repeats=4):   
 
     #Determine whether the current contig (or genome) has already had it's locus checked
     global loci_checked
@@ -1416,7 +1429,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                     #species = record.features[0].qualifiers["organism"][0]
                     #if genome_type == 'complete':
                     #    species += record.features[0].qualifiers["strain"][0]
-                Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,HMM_dir,prefix,CDD) 
+                Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,repeat_HMM_file,prefix,CDD) 
             else:
                 species = "Missing genbank formatted data"; Type_proteins = "?"; proteins_identified = ['-----']; Cas_search = ['-----']; up_down = 0; types_list = []
             loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,proteins_identified,Cas_search] 
@@ -1674,7 +1687,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         
         with open("{0}temp/consensus_repeat.fa".format(prefix), 'w') as file1:
             file1.write(">consensus_repeat\n{0}\n".format(consensus_repeat))
-        hmm_cmd = "{0}nhmmscan -E 0.001 --noali {1}/Repeats_groups/REPEATS_families_corrected.hmm {2}temp/consensus_repeat.fa ".format(bin_path,HMM_dir,prefix)
+        hmm_cmd = "{0}nhmmscan -E 0.001 --noali {1} {2}temp/consensus_repeat.fa ".format(bin_path,protein_HMM_file,prefix)
         handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = handle.communicate()
         if error != "":
@@ -1917,7 +1930,7 @@ def target_mutation_annotation(repeat_U, repeat_D):
 
     return repeat_mutations                            
 
-def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,prefix,CDD,repeats=4):
+def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,repeats=4):
 
     #Next, search each genome sequence for each repeat sequence and determine if it shows up more than once (bypassed CRISPR)
     #Since the genomes, spacers, etc. are in the same order, look for the start lengths and filter out reads that were found from CRISPR search
@@ -2080,7 +2093,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                         if outside_loci:   #only keep alignments that don't match 
                             
                             #Determine what the'PAM' sequence is after the non-locus alignment to report                                           
-                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,contig_lengths,affected_genomes,alt_align_subtract,bin_path,HMM_dir,prefix,CDD,repeats)
+                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,contig_lengths,affected_genomes,alt_align_subtract,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,repeats)
     
                             if not false_positive:
                                 blast_results_filtered_summary.append([Acc_num_self_target,  #Accession # of sequence with position of spacer target outside of array
@@ -2186,7 +2199,7 @@ def grab_feature(feature):
         
     return feature_num, target_protein
 
-def HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path='.',HMM_dir='.'):
+def HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file,repeat_HMM_file):
     
     #First convert the protein names and sequences into a fasta formatted file:
     with open("{0}temp/HMM_Cas_search.fa".format(prefix), 'w') as file1:
@@ -2194,7 +2207,7 @@ def HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path='.',HMM_dir='.'):
         for protein in check_list:
             file1.write(">{0}\n{1}\n".format(protein,check_aa[index]))
             index += 1
-    hmm_cmd = "{0}hmmscan -E 1e-20 --tblout {1}temp/HMM_results.txt {2}/Cas.407_XY9n.hmm {1}temp/HMM_Cas_search.fa".format(bin_path,prefix,HMM_dir)
+    hmm_cmd = "{0}hmmscan -E 1e-10 --tblout {1}temp/HMM_results.txt {2} {1}temp/HMM_Cas_search.fa".format(bin_path,prefix,protein_HMM_file)
     handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output, error = handle.communicate()
     if error != "":
@@ -2292,7 +2305,7 @@ def label_self_target(target_protein,feature_num):
    
     return target_protein
 
-def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,prefix,CDD=False,ask=False):
+def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,ask=False):
 
     if not os.path.exists('{0}temp'.format(prefix)):
             os.mkdir('{0}temp'.format(prefix))  
@@ -2325,7 +2338,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_l
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
 
     #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
-    blast_results_filtered_summary, locus_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,HMM_dir,prefix,CDD,repeats)
+    blast_results_filtered_summary, locus_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,repeats)
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
     output_results(blast_results_filtered_summary,locus_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
@@ -2520,7 +2533,11 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file = params.parse_options(argv)
+        
+        #Get filenames for HMMs
+        protein_HMM_file = HMM_dir + '/' + protein_HMM_file
+        repeat_HMM_file = HMM_dir + '/' + repeat_HMM_file
         
         #Run a check to make sure binaries are present
         check_dependencies()
@@ -2537,11 +2554,11 @@ def main(argv=None):
             Export_results(in_island,not_in_island,unknown_islands,prefix)
         elif rerun_loci:     #Used to rerun the loci annotating code near the spacers found
             imported_data = import_data(spacer_rerun_file)
-            re_analyzed_data  = locus_re_annotator(imported_data,Cas_gene_distance,HMM_dir,prefix,CDD)
+            re_analyzed_data  = locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD)
             output_results(re_analyzed_data,{},{},"Spacer_data_loci_re-analyzed.txt")   #Quickly re-generate the re-analyzed data.          
         else:
             #Identify genomes that contain self-targeting spacers     
-            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,prefix,CDD,ask)
+            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,ask)
             #protein_list is a placeholder for potential future development  
                                   
     except Usage, err:
