@@ -6,7 +6,7 @@
 #This script was written in 2016 by Kyle Watters
 #Copyright (c) 2016 Kyle Watters. All rights reserved.
 
-from anti_CRISPR_miner import anti_CRISPR_search,link_nucleotide_to_bioproject,link_assembly_to_nucleotide,gather_assemblies_from_bioproject_IDs,download_genomes,get_Accs
+from anti_CRISPR_miner import self_target_search,search_NCBI_genomes,link_assembly_to_nucleotide,link_nucleotide_to_assembly,gather_assemblies_from_bioproject_IDs,download_genomes,get_Accs
 import getopt
 import sys
 import subprocess
@@ -14,7 +14,7 @@ from datetime import datetime
 import os
 
 help_message = '''
-STSS_wrapper.py uses anti_CRISPR_miner.py to search for all of the genomes in a list provided
+STSS_wrapper.py uses STSS.py to search for all of the genomes in a list provided
 by the user. It can function by group or just run a list of genomes. It does not support protein clustering.
 
 Usage:
@@ -25,8 +25,7 @@ Options
 -v, --version                   Displays version number
 -g, --group  <groups_file>      Search by group. Makes a directory for each group provided and searches it on NCBI
 -u, --update <IDs_file>         Takes a list of genomes, searches for all those that were analyzed, and runs those that weren't
-                                (intended to be used to update self-targeting list as genomes are uploaded to NCBI;
-                                 Currently, only supports use of bioproject IDs, available on NCBI ftp server)
+                                (intended to be used to update self-targeting list as genomes are uploaded to NCBI)
 --auto-update                   Automatically pulls the updates from NCBI (don't need assemblies file)
 -e, --exclude <filename>        Accepts a list of genomes to exclude from the update function                
 
@@ -227,7 +226,7 @@ def main(argv=None):
                 current_dir=orig_dir+dir_name+"/"
                 assemblies = []
                 try:
-                    protein_list = anti_CRISPR_search(provided_dir,group_to_search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir)
+                    protein_list = self_target_search(provided_dir,group_to_search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir)
                     protein_list = [] #Currently not used, clear memory
                 except SystemExit:
                     pass #Presumedly, this is raised when the anti_CRISPR_miner function finds that further analysis in that group isn't necessary
@@ -239,27 +238,18 @@ def main(argv=None):
                 print("Loading genomes to exclude")
                 with open(exclude_file, 'rU') as file1:
                     exclude_genomes = [x.strip() for x in file1.readlines()]
-            
-            #Get a list of bioprojects associated with these nucleotide entries
-     #       bioproject_chunk_size = 50
-            excluded_bioprojects = []
-            #Loop over chunks in case they are large
-     #       for chunk in range(0,len(exclude_genomes),bioproject_chunk_size):
-     ##           if chunk + bioproject_chunk_size < len(exclude_genomes):
-      #              bioprojects_chunk = exclude_genomes[chunk:chunk+bioproject_chunk_size]
-      #          else: 
-      #              bioprojects_chunk = exclude_genomes[chunk:len(exclude_genomes)]
-      #          excluded_bioprojects += link_nucleotide_to_bioproject(bioprojects_chunk,[])   #results in a list of assembly uids to exclude
-      #      exclude_genomes = []
-            
-      #      #Print out a list of the bioprojects to exclude
-      #      with open("Bioproject_uids_to_exclude.txt", "w") as file1:
-      #          for bioproject in excluded_bioprojects:
-      #              file1.write(bioproject + "\n")       
-            
+                    
             if auto_update:
                 #Query NCBI for a list of genomes to update
                 print("Fetching all prokaryotic genomes from NCBI...")
+                all_assemblies = NCBI_search("Prokaryote[organism]","genbank",num_limit=1000000):
+                
+                search_NCBI_genomes("Prokaryote[organism]",1000000,False)
+                
+                
+                link_nucleotide_to_assembly(nucleotide_list,assemblies=[],num_limit=100000)
+                assemblyIDs
+                
                 bioprojectIDs = update_genomes_list()
             else:
                 #Import the assemblies
@@ -353,7 +343,7 @@ def main(argv=None):
             #Use the provided genomes pathway to run anti_CRISPR search
             provided_dir = "downloaded_genomes/"
             try:
-                protein_list = anti_CRISPR_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir)
+                protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,all_islands,in_islands_only,repeats,skip_family_search,families_limit,pad_locus,skip_family_create,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir)
                 protein_list = [] #Currently not used, clear memory
             except SystemExit:
                 pass #Presumedly, this is raised when the anti_CRISPR_miner function finds that further analysis in that group isn't necessary

@@ -64,6 +64,10 @@ Options
 --percent-reject <N>            Percentage (of 100%) to use a cutoff from the average spacer length to reject validity of a proposed locus (default 25%)
                                 Lower values are more stringent
 -s, --spacers <N>               Number of spacers needed to declare a CRISPR locus (default: 3)
+--min-repeat-length <N>         Minimum repeat length for the CRISPR array search (default: 18)
+--max-repeat-length <N>         Maximum repeat length for the CRISPR array search (default: 45)
+--min-spacer-length <N>         Minimum spacer length for the CRISPR array search (default: 18)
+--max-spacer-length <N>         Maximum spacer length for the CRISPR array search (default: 45)
 --pad-locus <N>                 Include a buffer around a potential locus to prevent missed repeats from
                                 appearing as hits (default: 100)
 -d, --Cas-gene-distance <N>     Window around an array to search for Cas proteins to determine CRISPR subtype
@@ -103,6 +107,10 @@ class Params:
                                        "rerun-loci=",
                                        "E-value=",
                                        "spacers=",
+                                       "min-repeat-length=",
+                                       "max-repeat-length=",
+                                       "min-spacer-length=",
+                                       "max-spacer-length=",
                                        "NCBI",
                                        "Cas-HMMs=",
                                        "repeat-HMMs=",
@@ -123,12 +131,16 @@ class Params:
         num_limit = 0
         E_value_limit = 1e-4
         provided_dir = ''
-        protein_HMM_file = "Cas.407_XY9n.hmm"
-        repeat_HMM_file = "Repeats_groups/REPEATS_families_corrected.hmm"
+        protein_HMM_file = "HMMs_Cas_proteins.hmm"
+        repeat_HMM_file = "REPEATS_HMMs.hmm"
         search = ''
         Accs_input = ''
         rerun_loci = False
         repeats = 4
+        min_repeat_length = 18
+        max_repeat_length = 45
+        min_spacer_length = 18
+        max_spacer_length = 45
         pad_locus = 100
         complete_only = False
         skip_PHASTER = False
@@ -169,6 +181,14 @@ class Params:
                 spacer_rerun_file = value
             if option in ("-s","--spacers"):
                 repeats = int(value) + 1
+            if option == "--min-repeat-length":
+                min_repeat_length = int(value) 
+            if option == "--max-repeat-length":
+                max_repeat_length = int(value) 
+            if option == "--min-spacer-length":
+                min_spacer_length = int(value) 
+            if option == "--max-spacer-length":
+                max_spacer_length = int(value) 
             if option == "--pad-locus":
                 pad_locus = int(value) 
             if option == "--CDD":
@@ -189,7 +209,10 @@ class Params:
                 redownload = True   
             if option in ("-n","--no-ask"):
                 ask = False  
-                                                                                                                                              
+        
+        #package the CRT paramaters together
+        CRT_params = [repeats, min_repeat_length, max_repeat_length, min_spacer_length, max_spacer_length]
+        
         if len(args) != 0:
             raise Usage(help_message)    
                 
@@ -200,7 +223,7 @@ class Params:
             print("Search and Accession# input are not compatible, please select one.\n") 
             raise Usage(help_message)                      
                                                                                                                              
-        return args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file
+        return args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file
 
 def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
     
@@ -219,7 +242,7 @@ def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
             return False         
     return True
 
-def print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,repeats,percent_reject,skip_PHASTER):
+def print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,CRT_params,percent_reject,skip_PHASTER):
 
     #Output the search parameters
     with open("Search_parameters.txt","w") as search_params:
@@ -234,7 +257,9 @@ def print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_li
         search_params.write("E-value limit:\t{:.1e}\n\n".format(E_value_limit))
         if pad_locus > 0:
             search_params.write("Searching at least {0} nts away from ends of CRISPR loci.\n".format(pad_locus))
-        search_params.write("Minimum spacers to declare locus:\t{0}\n\n".format(repeats-1))
+        search_params.write("Minimum spacers to declare locus:\t{0}\n\n".format(CRT_params[0]-1))
+        search_params.write("Min/Max repeat lengths to search:\t{0}/{1}\n\n".format(CRT_params[1],CRT_params[2]))
+        search_params.write("Min/Max spacer lengths to search:\t{0}/{1}\n\n".format(CRT_params[3],CRT_params[4]))
         search_params.write("Minimum adherence to average spacer length:\t{0}\n".format(str(100-percent_reject)+"%"))
         if skip_PHASTER:
             search_params.write("PHASTER analysis skipped.\n")
@@ -796,7 +821,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
 
     return fastanames,Acc_convert_to_GI
 
-def spacer_scanner(fastanames,bin_path,repeats,current_dir,prefix):
+def spacer_scanner(fastanames,bin_path,CRT_params,current_dir,prefix):
 
     #Search each genome for CRISPR repeats
     print("Searching for CRISPR spacer-repeats...")
@@ -865,7 +890,7 @@ def spacer_scanner(fastanames,bin_path,repeats,current_dir,prefix):
             
         if good_genome:     
             result_file = "{0}CRISPR_analysis/".format(prefix) + fastaname.split(".")[0] + ".out"
-            CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -maxRL 45 -minRL 20 -minNR {1} -maxSL 45 -minSL 18 {2} {3}".format(bin_path,repeats,filein,result_file)
+            CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -minNR {1} -minRL {2} -maxRL {3} -minSL {4} -maxSL {5} {6} {7}".format(bin_path,CRT_params[0],CRT_params[1],CRT_params[2],CRT_params[3],CRT_params[4],filein,result_file)
             crispr_search = subprocess.Popen(CRISPR_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = crispr_search.communicate()
             if error != '':
@@ -2305,7 +2330,7 @@ def label_self_target(target_protein,feature_num):
    
     return target_protein
 
-def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,ask=False):
+def self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,ask=False):
 
     if not os.path.exists('{0}temp'.format(prefix)):
             os.mkdir('{0}temp'.format(prefix))  
@@ -2314,7 +2339,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_l
         num_limit = default_limit        
     
     #Creates a report of the search parameters
-    print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,repeats,percent_reject,skip_PHASTER)
+    print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_limit,pad_locus,CRT_params,percent_reject,skip_PHASTER)
     
     #Fetch the fasta files in the provided directory
     if provided_dir != '':
@@ -2329,7 +2354,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_l
         fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask,prefix)
 
     #Search each genome for CRIPSR repeat-spacers
-    CRISPR_results, affected_genomes = spacer_scanner(fastanames,bin_path,repeats,current_dir,prefix)
+    CRISPR_results, affected_genomes = spacer_scanner(fastanames,bin_path,CRT_params,current_dir,prefix)
     
     #BLAST each spacer sequence against the genome
     spacer_data,num_loci = get_loci(CRISPR_results,fastanames, affected_genomes)
@@ -2338,7 +2363,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_l
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
 
     #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
-    blast_results_filtered_summary, locus_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,repeats)
+    blast_results_filtered_summary, locus_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,CRT_params[0])
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
     output_results(blast_results_filtered_summary,locus_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
@@ -2533,7 +2558,7 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file = params.parse_options(argv)
         
         #Get filenames for HMMs
         protein_HMM_file = HMM_dir + '/' + protein_HMM_file
@@ -2558,7 +2583,7 @@ def main(argv=None):
             output_results(re_analyzed_data,{},{},"Spacer_data_loci_re-analyzed.txt")   #Quickly re-generate the re-analyzed data.          
         else:
             #Identify genomes that contain self-targeting spacers     
-            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,ask)
+            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,ask)
             #protein_list is a placeholder for potential future development  
                                   
     except Usage, err:
