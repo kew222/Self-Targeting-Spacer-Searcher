@@ -210,7 +210,7 @@ class Params:
             if option in ("-n","--no-ask"):
                 ask = False  
         
-        #package the CRT paramaters together
+        #package the CRT parameters together
         CRT_params = [repeats, min_repeat_length, max_repeat_length, min_spacer_length, max_spacer_length]
         
         if len(args) != 0:
@@ -257,9 +257,9 @@ def print_search_criteria(search,num_limit,default_limit,provided_dir,E_value_li
         search_params.write("E-value limit:\t{:.1e}\n\n".format(E_value_limit))
         if pad_locus > 0:
             search_params.write("Searching at least {0} nts away from ends of CRISPR loci.\n".format(pad_locus))
-        search_params.write("Minimum spacers to declare locus:\t{0}\n\n".format(CRT_params[0]-1))
-        search_params.write("Min/Max repeat lengths to search:\t{0}/{1}\n\n".format(CRT_params[1],CRT_params[2]))
-        search_params.write("Min/Max spacer lengths to search:\t{0}/{1}\n\n".format(CRT_params[3],CRT_params[4]))
+        search_params.write("Minimum spacers to declare locus:\t{0}\n".format(CRT_params[0]-1))
+        search_params.write("Min/Max repeat lengths to search:\t{0}/{1}\n".format(CRT_params[1],CRT_params[2]))
+        search_params.write("Min/Max spacer lengths to search:\t{0}/{1}\n".format(CRT_params[3],CRT_params[4]))
         search_params.write("Minimum adherence to average spacer length:\t{0}\n".format(str(100-percent_reject)+"%"))
         if skip_PHASTER:
             search_params.write("PHASTER analysis skipped.\n")
@@ -1176,6 +1176,10 @@ def find_Cas_proteins(align_pos,record,protein_HMM_file,repeat_HMM_file,prefix,C
                         else:
                             if pseudogene:
                                 pseudogenes.append(protein_num)  #keep track of the pseudogenes found before homology search, since order can be lost to utilize batch processing on NCBI CD server
+                                aa = str(feature.extract(record).seq.translate(to_stop=True))
+                                if aa != "":
+                                    check_list.append(protein_num)
+                                    check_aa.append(aa)  #Add the protein sequence
                             if CDD:
                                 check_list.append(protein_num)
                             else:
@@ -1360,8 +1364,8 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_
         
     else:
         #Find Cas proteins near the spacer-repeat region
-        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,protein_HMM_file,repeat_HMM_file,CDD,Cas_gene_distance)
-    
+        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,protein_HMM_file,repeat_HMM_file,prefix,CDD,Cas_gene_distance)
+
     #Determine what Type the locus is
     Type = Type_check(types_list)
     
@@ -1712,7 +1716,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         
         with open("{0}temp/consensus_repeat.fa".format(prefix), 'w') as file1:
             file1.write(">consensus_repeat\n{0}\n".format(consensus_repeat))
-        hmm_cmd = "{0}nhmmscan -E 0.001 --noali {1} {2}temp/consensus_repeat.fa ".format(bin_path,protein_HMM_file,prefix)
+        hmm_cmd = "{0}nhmmscan -E 0.001 --noali {1} {2}temp/consensus_repeat.fa ".format(bin_path,repeat_HMM_file,prefix)
         handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = handle.communicate()
         if error != "":
@@ -1725,23 +1729,34 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         for line in output.split('\n'):
             a = re.search(expression1, line)
             if a is not None: 
-                data_string = output.split('\n')[output.split('\n').index(line) + 2]  #Get the data from two lines below
-                if data_string == "": #No hits found
-                    break
-                repeat_group = data_string.strip().split()[3]  #The repeat group is the 4th position
-                repeat_direction = int(data_string.strip().split()[5]) - int(data_string.strip().split()[4]) #positive means CRT and HMM direction match
-                #Use the identified group to guess at the Type
-                if repeat_group[-1] == 'R':  #Removes the R designation that was added to indicate where the original REPEATS data was backward
-                    repeat_group = repeat_group[:-1]
-                possible_types = Repeat_families_to_types[repeat_group]
-                if len(possible_types) == 1:
-                    Type_repeat = "Type {0}".format(possible_types[0])
-                elif len(possible_types) == 2:
-                    Type_repeat = "Type {0} or {1}".format(possible_types[0],possible_types[1])
-                elif len(possible_types) > 2:
-                    Type_repeat = "Type" + "".join([" {0},".format(string) for string in possible_types[:-1]]) + " or {0}".format(possible_types[-1])
-                Type_repeat += " (group {0})".format(repeat_group)
+                i = 2
+                e_value = 1
+                while True:
+                    data_string = output.split('\n')[output.split('\n').index(line) + i]  #Get the data from lines below
+                    i += 1
+                    if data_string == "": #No hits found
+                        break
+                    try:
+                        found_e_value = float(data_string.strip().split()[0])
+                        if found_e_value < e_value:  #want to take the lowest e-value (best match)
+                            e_value = found_e_value
+                            repeat_group = data_string.strip().split()[3]  #The repeat group is the 4th position
+                            repeat_direction = int(data_string.strip().split()[5]) - int(data_string.strip().split()[4]) #positive means CRT and HMM direction match
+                            #Use the identified group to guess at the Type
+                            if repeat_group[-1] == 'R':  #Removes the R designation that was added to indicate where the original REPEATS data was backward
+                                repeat_group = repeat_group[:-1]
+                            possible_types = Repeat_families_to_types[repeat_group]
+                            if len(possible_types) == 1:
+                                Type_repeat = "Type {0}".format(possible_types[0])
+                            elif len(possible_types) == 2:
+                                Type_repeat = "Type {0} or {1}".format(possible_types[0],possible_types[1])
+                            elif len(possible_types) > 2:
+                                Type_repeat = "Type" + "".join([" {0},".format(string) for string in possible_types[:-1]]) + " or {0}".format(possible_types[-1])
+                            Type_repeat += " (group {0})".format(repeat_group)
+                    except:
+                        break
                 break
+        
         
         #Here, we'll double check the direction of the array, and flip the spacer/repeat/PAM sequences if in reverse
         #First, determine the array direction based on the Cas gene places
@@ -2192,7 +2207,7 @@ def is_known_Cas_protein(product,types_list=[]):
     
     protein_name = ''; is_Cas = False
     for key,values in Cas_proteins.iteritems():
-        if product.lower().find(key.lower()) > -1:
+        if product.find(key) > -1:
             #Check to see if the protein type is annotated
             protein_name = key
             parts = [x.lower() for x in product.split(" ")]
@@ -2232,7 +2247,7 @@ def HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file,
         for protein in check_list:
             file1.write(">{0}\n{1}\n".format(protein,check_aa[index]))
             index += 1
-    hmm_cmd = "{0}hmmscan -E 1e-10 --tblout {1}temp/HMM_results.txt {2} {1}temp/HMM_Cas_search.fa".format(bin_path,prefix,protein_HMM_file)
+    hmm_cmd = "{0}hmmscan -E 1e-2 --tblout {1}temp/HMM_results.txt {2} {1}temp/HMM_Cas_search.fa".format(bin_path,prefix,protein_HMM_file)
     handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output, error = handle.communicate()
     if error != "":

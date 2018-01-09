@@ -42,9 +42,9 @@ CRISPR_types = {
                 "Type IV-A":[["dinG","Csf4"],["Csf1"],["Cas7","Csf2"],["Cas5","Csf3"]],
                 
                 "Type V-A":[["Cas12a","Cpf1"],["Cas4","Csa1"],["Cas1"],["Cas2"]],
-                "Type V-B":[["Cas12b","C2c1"],["Cas1"],["Cas2"]],
-                "Type V-C":[["Cas1"],["Cas12c","C2c3"]],
-                "Type V-D":[["Cas1"],["Cas12d","CasY"]],
+                "Type V-B":[["Cas12b","c2c1"],["Cas1"],["Cas2"]],
+                "Type V-C":[["Cas12c","c2c3"],["Cas1"]],
+                "Type V-D":[["Cas12d","CasY"],["Cas1"]],
                 "Type V-E":[["Cas12e","CasX"],["Cas4"],["Cas1"],["Cas2"]],
                 "Type V-U1":[["c2c4"]],
                 "Type V-U2":[["c2c8"]],
@@ -52,10 +52,10 @@ CRISPR_types = {
                 "Type V-U4":[["c2c9"]],
                 "Type V-U5":[["c2c5"]],
                 
-                "Type VI-A":[["Cas13a","C2c2"],["Cas1"],["Cas2"]],
-                "Type VI-B1":[["Cas13b1","C2c6"],["Csx27"]],
-                "Type VI-B2":[["Cas13b2","C2c6"],["Csx28"]],
-                "Type VI-C":[["Cas13c","C2c7"]]
+                "Type VI-A":[["Cas13a","c2c2"],["Cas1"],["Cas2"]],
+                "Type VI-B1":[["Cas13b1","c2c6"],["Csx27"]],
+                "Type VI-B2":[["Cas13b2","c2c6"],["Csx28"]],
+                "Type VI-C":[["Cas13c","c2c7"]]
                 
                 }
                 
@@ -130,27 +130,27 @@ Cas_proteins =  {
                 "Cas12a":["Type V-A"],
                 "Cpf1":["Type V-A"],
                 "Cas12b":["Type V-B"],
-                "C2c1":["Type V-B"],
+                "c2c1":["Type V-B"],
                 "Cas12c":["Type V-C"],
-                "C2c3":["Type V-C"],
+                "c2c3":["Type V-C"],
                 "Cas12d":["Type V-D"],
                 "CasY":["Type V-D"],
                 "Cas12e":["Type V-E"],
                 "CasX":["Type V-E"],
-                "C2c4":["Type V-U1"],
-                "C2c5":["Type V-U5"],
-                "C2c8":["Type V-U2"], 
-                "C2c10":["Type V-U3"], 
-                "C2c9":["Type V-U4"],  
+                "c2c4":["Type V-U1"],
+                "c2c5":["Type V-U5"],
+                "c2c8":["Type V-U2"], 
+                "c2c10":["Type V-U3"], 
+                "c2c9":["Type V-U4"],  
                 "Cas13a":["Type VI-A"],
-                "C2c2":["Type VI-A"],
+                "c2c2":["Type VI-A"],
                 "Cas13b1":["Type VI-B1"],
                 "Cas13b2":["Type VI-B2"],
-                "C2c6":["Type VI-B1","Type VI-B2"],
+                "c2c6":["Type VI-B1","Type VI-B2"],
                 "Csx27":["Type VI-B1"],
                 "Csx28":["Type VI-B2"],
                 "Cas13c":["Type VI-C"],
-                "C2c7":["Type VI-C"],            
+                "c2c7":["Type VI-C"],            
                                                                                                                                                                                                                                                                                                           
               }               
                 
@@ -185,14 +185,14 @@ Cas_synonym_list = {
                 "Csf4":"dinG",
                 "Csf2":"Cas7",
                 "Csf3":"Cas5",
-                "C2c2":"Cas13a",
+                "c2c2":"Cas13a",
                 "Cpf1":"Cas12a",
-                "C2c1":"Cas12b",
-                "C2c3":"Cas12c",
+                "c2c1":"Cas12b",
+                "c2c3":"Cas12c",
                 "CasY":"Cas12d",
                 "CasX":"Cas12e",
-                "C2c6":"Cas13b",
-                "C2c7":"Cas13c",   
+                "c2c6":"Cas13b",
+                "c2c7":"Cas13c",   
                
                 }                
 
@@ -241,9 +241,18 @@ Repeat_families_to_types = {
                                 "F39": ["I-A", "I-B", "II-B"],
                                 "F40": ["I-B"],
                                 "Cas12a_repeats": ["V-A"],         
-                                "Cas13a1_repeats": ["VI-A"],    
-                                "Cas13a2_repeats": ["VI-A"],
+                                "Cas12b_repeats": ["V-B"], 
+                                "Cas12c_repeats": ["V-C"], 
+                                "Cas12d_repeats": ["V-D"], 
+                                "Cas12e_repeats": ["V-E"], 
+                                "Cas13a_repeats": ["VI-A"],    
+                                "Cas13b1_repeats": ["VI-B1"],
+                                "Cas13b2_repeats": ["VI-B2"],
+                                "Cas13c_repeats": ["VI-C"],
+                                "c2c8_V-U2_repeats": ["V-U2"], 
                                 "c2c10_V-U3_repeats": ["V-U3"], 
+                                "c2c9_V-U4_repeats": ["V-U4"],
+                                "c2c5_V-U5_repeats": ["V-U5"],
                                 
                                  }                                                                                                                    
 #Here, 1 means the Cas genes are expected to be upstream, while -1 is downstream (to be consistent with up_down), 0 means it is common to see both orientations                                                                                
