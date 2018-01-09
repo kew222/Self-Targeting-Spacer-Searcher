@@ -1418,7 +1418,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_H
                 proteins += ", " + ", ".join(Cas_search[2:])
         else:  
             proteins = Cas_search[0]
-        re_analyzed_data.append(result[:3] + [Type] + result[4] + [Cas_search] + [proteins_identified] + result[7:])
+        re_analyzed_data.append(result[:3] + [Type] + [result[4]] + [Cas_search] + [proteins_identified] + result[7:])
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
