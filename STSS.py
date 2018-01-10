@@ -1120,7 +1120,7 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
         record = SeqIO.read(genfile_name, 'genbank')
     return record    
     
-def find_Cas_proteins(align_pos,record,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,Cas_gene_distance=20000):
+def find_Cas_proteins(align_pos,record,protein_HMM_file,prefix,CDD=False,Cas_gene_distance=20000):
     
     #Define the region to examine coding regions
     if Cas_gene_distance == 0:
@@ -1197,7 +1197,7 @@ def find_Cas_proteins(align_pos,record,protein_HMM_file,repeat_HMM_file,prefix,C
             short_names = CDD_homology_search(check_list)   #Note: order of the Cas genes is not preserved, only checks if all are present
         else:
             #Otherwise the default is search the protein sequences with HMMER to see if they are Cas proteins
-            short_names = HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file,repeat_HMM_file)
+            short_names = HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file)
         
         for short_name in short_names:    
             is_Cas,protein_name,types_list = is_known_Cas_protein(short_name.split('\t')[1],types_list)
@@ -1313,7 +1313,7 @@ def find_spacer_target(Acc_num_target,alt_alignment):
         self_targets = [["----No genbank file", "skipped----"]]    
     return self_targets               
     
-def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,repeat_HMM_file,prefix,CDD=False):                   
+def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,prefix,CDD=False):                   
     global all_contigs_checked
     global Cas_gene_analysis_dict
                    
@@ -1351,7 +1351,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_
                 else:
                     record = download_genbank(genome_Acc)
                 print("Checking {0} contig for Cas proteins...".format(genome_Acc))
-                proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,protein_HMM_file,repeat_HMM_file,prefix,CDD,Cas_gene_distance)
+                proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,protein_HMM_file,prefix,CDD,Cas_gene_distance)
                 all_proteins_identified += proteins_identified
                 all_types_list += types_list
                 total_up_down += up_down
@@ -1364,7 +1364,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_
         
     else:
         #Find Cas proteins near the spacer-repeat region
-        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,protein_HMM_file,repeat_HMM_file,prefix,CDD,Cas_gene_distance)
+        proteins_identified,types_list,up_down = find_Cas_proteins(align_locus,record,protein_HMM_file,prefix,CDD,Cas_gene_distance)
 
     #Determine what Type the locus is
     Type = Type_check(types_list)
@@ -1410,17 +1410,184 @@ def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_H
             record = SeqIO.read(contig_filename, 'genbank')
         else:
             record = download_genbank(contig_Acc)
-        Type,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,repeat_HMM_file,prefix,CDD)
-        #Convert the Cas protein search results into a printable string       
+        Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,prefix,CDD)
+        
+        #Convert the Cas protein search results (and Cas genes found) into a printable string       
         if len(Cas_search) > 1:
-            proteins = "".join(Cas_search[:2])
+            locus_condition = "".join(Cas_search[:2])
             if len(Cas_search) > 2:
-                proteins += ", " + ", ".join(Cas_search[2:])
+                locus_condition += ", " + ", ".join(Cas_search[2:])
         else:  
-            proteins = Cas_search[0]
-        re_analyzed_data.append(result[:3] + [Type] + [result[4]] + [Cas_search] + [proteins_identified] + result[7:])
+            locus_condition = Cas_search[0]
+        try:
+            if len(proteins_identified) > 1:
+                proteins_found = ", ".join(proteins_identified[:])
+            elif len(proteins_identified) == 1:
+                proteins_found = proteins_identified[0]
+            else:
+                proteins_found = 'None'
+        except UnboundLocalError:
+            proteins_found = 'N/A'
+        
+        repeat_direction,Type_repeat,possible_types = repeat_HMM_check(result[15],prefix,repeat_HMM_file)
+        
+        #Double check the direction of the array, and flip the spacer/repeat/PAM sequences if in reverse
+        #First, determine the array direction based on the Cas gene places
+        if repeat_direction == 0:
+            array_direction = "CRT assumed forward, orientation unknown"; extra_details = "no predictions"
+            #Check to see where the Cas proteins are relative to the array and where they are expected based on the predicted type (prefer Cas protein annotation)
+            #First figure out if either Type picks a single Type
+            if Type_proteins == "?" and Type_repeat != "Repeat not recognized":
+                types_to_use = possible_types
+                extra_details = "repeat sequence"
+            elif "or" in Type_proteins and "or" not in Type_repeat and "?" not in Type_repeat and "Repeat not recognized" not in Type_repeat:   
+                #Only one type determined by repeats, but multiple from proteins
+                types_to_use = possible_types
+                extra_details = "repeat sequence"
+            elif "or" in Type_proteins and "or" in Type_repeat:   
+                #Both predict multiple possible types, default to those predicted by the proteins
+                #extract the types predicted in Type_proteins
+                extra_details = "Cas proteins"
+            elif Type_proteins != "?":
+                #1 or more types predicted by the proteins 
+                extra_details = "Cas proteins"
+            if extra_details == "Cas proteins":
+                if Type_proteins == "?":
+                    #determine if too many types or none to make a call
+                    if types_list == []:
+                        extra_details = "no predictions"  #Reset to default, since there is no way to predict a Cas type
+                    else:
+                        #collapse the list of possible types
+                        types_to_use = [x.split()[1] for x in list(set(types_list))]  #remove the word 'Type'
+                else:
+                    types_to_use = []
+                    for string in Type_proteins.split():
+                        if "-" in string:
+                            if string[-1] in (",", "?"):
+                                types_to_use.append(string[:-1])
+                            elif "-----" not in string:
+                                types_to_use.append(string)
+            if extra_details != "no predictions":
+                #Now Check the possible types to see what the direction is (Note! presumed Type II-C will come out as backward)
+                directions_predicted = []
+                for dir_check in types_to_use:
+                    directions_predicted.append(Expected_array_directions["Type {0}".format(dir_check)])
+                #Confirm they are all in the same directions
+                expected_direction = directions_predicted[0]
+                for el in directions_predicted:
+                    if el != expected_direction:
+                        #disagreement, reset to unknown direction
+                        expected_direction = 0
+                        break
+                #Now determine if the array orientation matches the expected orientation        
+                if up_down > 0:  #if the Cas genes precede the array
+                    up_down = 1
+                elif up_down < 0:
+                    up_down = -1
+                if expected_direction != 0:
+                    if up_down == expected_direction:
+                        repeat_direction = 1   #already in correct orientation
+                    else:
+                        repeat_direction = -1  #needs to be flipped
+        else:
+            extra_details = "repeat sequence"
+            if repeat_direction > 0:
+                array_direction = "Original orientation correct (determined with {0})".format(extra_details)
+            elif repeat_direction < 0:
+                array_direction = "Original orientation wrong (sequences reversed, determined with {0})".format(extra_details)
+        
+        #if the repeat_direction is found to be backward, do the flipping
+        if repeat_direction < 0:
+            #Need to flip spacer sequence, PAM sequences, consensus Repeat
+            PAM_seq_up = str(Seq(result[12]).reverse_complement())           
+            temp_seq = PAM_seq_up
+            PAM_seq_up = str(Seq(result[14]).reverse_complement())    
+            PAM_seq_down = temp_seq          
+            consensus_repeat = str(Seq(result[15]).reverse_complement())                
+            spacer_seq = str(Seq(result[11]).reverse_complement())                
+            array_direction = "Original orientation wrong (sequences reversed, determined with repeat sequence)"
+        
+            #Also need to flip the orientation of the mutation annotations (for the repeats and target sequence)
+            target_sequence = result[13]
+            if target_sequence != "Perfect match":
+                target_sequence = flip_mismatch_notation(result[13])        
+            repeat_mutations = result[16]
+            if repeat_mutations not in ("None","Skipped","Error in repeat, not analyzed"):
+                #need to parse out the upper and lower mutations
+                if result[16][:4] == "Both":
+                    repeat_U = result[16].split(": ")[-2].split(", ")[0]
+                    repeat_D = result[16].split(": ")[-1].strip()
+                elif result[16][:4] == "Down":
+                    repeat_U = ""
+                    repeat_D = result[16].split(": ")[-1].strip()
+                elif result[16][:4] == "Upst":
+                    repeat_U = result[16].split(": ")[-1].strip()
+                    repeat_D = ""
+                if repeat_U != "":
+                    repeat_U = flip_mismatch_notation(repeat_U)
+                if repeat_D != "":
+                    repeat_D = flip_mismatch_notation(repeat_D)                
+                repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
+            flipped_fields = [spacer_seq,PAM_seq_up,target_sequence,PAM_seq_down,consensus_repeat,repeat_mutations,array_direction]
+        else:
+            flipped_fields = result[11:18]  #the original, unflipped data
+        
+        re_analyzed_data.append(result[:3] + [Type_proteins,Type_repeat,locus_condition,proteins_found] + result[7:11] + flipped_fields + result[18:])
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
+
+                                                                 
+def repeat_HMM_check(consensus_repeat,prefix,repeat_HMM_file):
+    
+    #Determine the orientation of the array. First try to align the repeat, then look for Cas proteins nearby and assume that the Cas proteins are upstream
+    #Check the consensus repeat against the HMM list
+    
+    with open("{0}temp/consensus_repeat.fa".format(prefix), 'w') as file1:
+        file1.write(">consensus_repeat\n{0}\n".format(consensus_repeat))
+    hmm_cmd = "{0}nhmmscan -E 0.001 --noali {1} {2}temp/consensus_repeat.fa ".format(bin_path,repeat_HMM_file,prefix)
+    handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, error = handle.communicate()
+    if error != "":
+        print(error)
+        sys.exit()        
+    
+    #Parse the output to find the direction of the alignment (if there was one)
+    Type_repeat = "Repeat not recognized"; repeat_direction = 0
+    expression1 = re.compile("\s+E-value\s+score\s+bias")   #find the table labels for the data
+    for line in output.split('\n'):
+        a = re.search(expression1, line)
+        if a is not None: 
+            i = 2
+            e_value = 1
+            while True:
+                data_string = output.split('\n')[output.split('\n').index(line) + i]  #Get the data from lines below
+                i += 1
+                if data_string == "": #No hits found
+                    break
+                try:
+                    found_e_value = float(data_string.strip().split()[0])
+                    if found_e_value < e_value:  #want to take the lowest e-value (best match)
+                        e_value = found_e_value
+                        repeat_group = data_string.strip().split()[3]  #The repeat group is the 4th position
+                        repeat_direction = int(data_string.strip().split()[5]) - int(data_string.strip().split()[4]) #positive means CRT and HMM direction match
+                        #Use the identified group to guess at the Type
+                        if repeat_group[-1] == 'R':  #Removes the R designation that was added to indicate where the original REPEATS data was backward
+                            repeat_group = repeat_group[:-1]
+                        possible_types = Repeat_families_to_types[repeat_group]
+                        if len(possible_types) == 1:
+                            Type_repeat = "Type {0}".format(possible_types[0])
+                        elif len(possible_types) == 2:
+                            Type_repeat = "Type {0} or {1}".format(possible_types[0],possible_types[1])
+                        elif len(possible_types) > 2:
+                            Type_repeat = "Type" + "".join([" {0},".format(string) for string in possible_types[:-1]]) + " or {0}".format(possible_types[-1])
+                        Type_repeat += " (group {0})".format(repeat_group)
+                except:
+                    break
+            break
+                                                                      
+    return repeat_direction,Type_repeat,possible_types                                                         
+                                                               
+                                                                 
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
 def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,contig_lengths,affected_genomes,alt_align_subtract,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,repeats=4):   
 
@@ -1458,7 +1625,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                     #species = record.features[0].qualifiers["organism"][0]
                     #if genome_type == 'complete':
                     #    species += record.features[0].qualifiers["strain"][0]
-                Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,repeat_HMM_file,prefix,CDD) 
+                Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,prefix,CDD) 
             else:
                 species = "Missing genbank formatted data"; Type_proteins = "?"; proteins_identified = ['-----']; Cas_search = ['-----']; up_down = 0; types_list = []
             loci_checked[contig_Acc + "-" + str(crispr)] = [species,Type_proteins,proteins_identified,Cas_search] 
@@ -1711,52 +1878,8 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             PAM_seq_up = target_subseq[s_lower-9:s_lower]
             PAM_seq_down = target_subseq[s_upper:s_upper+9]
             
-        #Determine the orientation of the array. First try to align the repeat, then look for Cas proteins nearby and assume that the Cas proteins are upstream
-        #Check the consensus repeat against the HMM list
-        
-        with open("{0}temp/consensus_repeat.fa".format(prefix), 'w') as file1:
-            file1.write(">consensus_repeat\n{0}\n".format(consensus_repeat))
-        hmm_cmd = "{0}nhmmscan -E 0.001 --noali {1} {2}temp/consensus_repeat.fa ".format(bin_path,repeat_HMM_file,prefix)
-        handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output, error = handle.communicate()
-        if error != "":
-            print(error)
-            sys.exit()        
-        
-        #Parse the output to find the direction of the alignment (if there was one)
-        Type_repeat = "Repeat not recognized"; repeat_direction = 0
-        expression1 = re.compile("\s+E-value\s+score\s+bias")   #find the table labels for the data
-        for line in output.split('\n'):
-            a = re.search(expression1, line)
-            if a is not None: 
-                i = 2
-                e_value = 1
-                while True:
-                    data_string = output.split('\n')[output.split('\n').index(line) + i]  #Get the data from lines below
-                    i += 1
-                    if data_string == "": #No hits found
-                        break
-                    try:
-                        found_e_value = float(data_string.strip().split()[0])
-                        if found_e_value < e_value:  #want to take the lowest e-value (best match)
-                            e_value = found_e_value
-                            repeat_group = data_string.strip().split()[3]  #The repeat group is the 4th position
-                            repeat_direction = int(data_string.strip().split()[5]) - int(data_string.strip().split()[4]) #positive means CRT and HMM direction match
-                            #Use the identified group to guess at the Type
-                            if repeat_group[-1] == 'R':  #Removes the R designation that was added to indicate where the original REPEATS data was backward
-                                repeat_group = repeat_group[:-1]
-                            possible_types = Repeat_families_to_types[repeat_group]
-                            if len(possible_types) == 1:
-                                Type_repeat = "Type {0}".format(possible_types[0])
-                            elif len(possible_types) == 2:
-                                Type_repeat = "Type {0} or {1}".format(possible_types[0],possible_types[1])
-                            elif len(possible_types) > 2:
-                                Type_repeat = "Type" + "".join([" {0},".format(string) for string in possible_types[:-1]]) + " or {0}".format(possible_types[-1])
-                            Type_repeat += " (group {0})".format(repeat_group)
-                    except:
-                        break
-                break
-        
+        #Use the consensus repeat to try to gain information about the array
+        repeat_direction,Type_repeat,possible_types = repeat_HMM_check(consensus_repeat,prefix,repeat_HMM_file)
         
         #Here, we'll double check the direction of the array, and flip the spacer/repeat/PAM sequences if in reverse
         #First, determine the array direction based on the Cas gene places
@@ -1844,7 +1967,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 if repeat_D != "":
                     repeat_D = flip_mismatch_notation(repeat_D)                
                 repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
-            
+                                    
         #if the validity of the locus hasn't been determined yet, include the information
         if len(loci_checked[contig_Acc + "-" + str(crispr)]) < 5:
             try:
@@ -2239,7 +2362,7 @@ def grab_feature(feature):
         
     return feature_num, target_protein
 
-def HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file,repeat_HMM_file):
+def HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file):
     
     #First convert the protein names and sequences into a fasta formatted file:
     with open("{0}temp/HMM_Cas_search.fa".format(prefix), 'w') as file1:
@@ -2588,14 +2711,19 @@ def main(argv=None):
             Cas_gene_analysis_dict = {}
             all_contigs_checked = []
         
+        if not os.path.exists('{0}temp'.format(prefix)) and not rerun_PHASTER:
+            os.mkdir('{0}temp'.format(prefix))
+    
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
             in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(imported_data,current_dir)
             Export_results(in_island,not_in_island,unknown_islands,prefix)
         elif rerun_loci:     #Used to rerun the loci annotating code near the spacers found
             imported_data = import_data(spacer_rerun_file)
-            re_analyzed_data  = locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD)
-            output_results(re_analyzed_data,{},{},"Spacer_data_loci_re-analyzed.txt")   #Quickly re-generate the re-analyzed data.          
+            #First recheck the proteins near the spacer
+            re_analyzed_data = locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD)
+            #Then check the repeat again for direction, Type, etc.
+            output_results(re_analyzed_data,{},{},"{0}_Spacer_data_loci_re-analyzed.txt".format(prefix))   #Quickly re-generate the re-analyzed data.          
         else:
             #Identify genomes that contain self-targeting spacers     
             protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,ask)
