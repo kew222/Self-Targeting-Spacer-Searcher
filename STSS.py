@@ -60,7 +60,7 @@ Options
 --repeat-HMMs <filename>        Use the provided HMMs for the repeat prediction instead of the provided set 
 --complete-only                 Only return complete genomes from NCBI
 --rerun-loci <filename>         Rerun the locus annotater to recheck the nearby locus for Type and completeness from provided sapcer search results file                   
--E, --E-value  <N>              Upper limit of E-value to accept BLAST results as protein family (default: 1e-4)
+-E, --E-value  <N>              Upper limit of E-value to accept BLAST results as protein family (default: 1e-6)
 --percent-reject <N>            Percentage (of 100%) to use a cutoff from the average spacer length to reject validity of a proposed locus (default 25%)
                                 Lower values are more stringent
 -s, --spacers <N>               Number of spacers needed to declare a CRISPR locus (default: 3)
@@ -129,7 +129,7 @@ class Params:
             raise Usage(msg)
         default_limit = 100000
         num_limit = 0
-        E_value_limit = 1e-4
+        E_value_limit = 1e-6
         provided_dir = ''
         protein_HMM_file = "HMMs_Cas_proteins.hmm"
         repeat_HMM_file = "REPEATS_HMMs.hmm"
@@ -1544,7 +1544,7 @@ def repeat_HMM_check(consensus_repeat,prefix,repeat_HMM_file):
     
     with open("{0}temp/consensus_repeat.fa".format(prefix), 'w') as file1:
         file1.write(">consensus_repeat\n{0}\n".format(consensus_repeat))
-    hmm_cmd = "{0}nhmmscan -E 0.001 --noali {1} {2}temp/consensus_repeat.fa ".format(bin_path,repeat_HMM_file,prefix)
+    hmm_cmd = "{0}nhmmscan -E 1e-6 --noali {1} {2}temp/consensus_repeat.fa ".format(bin_path,repeat_HMM_file,prefix)
     handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output, error = handle.communicate()
     if error != "":
@@ -2370,7 +2370,7 @@ def HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file)
         for protein in check_list:
             file1.write(">{0}\n{1}\n".format(protein,check_aa[index]))
             index += 1
-    hmm_cmd = "{0}hmmscan -E 1e-2 --tblout {1}temp/HMM_results.txt {2} {1}temp/HMM_Cas_search.fa".format(bin_path,prefix,protein_HMM_file)
+    hmm_cmd = "{0}hmmscan -E 1e-6 --tblout {1}temp/HMM_results.txt {2} {1}temp/HMM_Cas_search.fa".format(bin_path,prefix,protein_HMM_file)
     handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output, error = handle.communicate()
     if error != "":
