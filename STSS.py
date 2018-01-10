@@ -1552,7 +1552,7 @@ def repeat_HMM_check(consensus_repeat,prefix,repeat_HMM_file):
         sys.exit()        
     
     #Parse the output to find the direction of the alignment (if there was one)
-    Type_repeat = "Repeat not recognized"; repeat_direction = 0
+    Type_repeat = "Repeat not recognized"; repeat_direction = 0; possible_types = []
     expression1 = re.compile("\s+E-value\s+score\s+bias")   #find the table labels for the data
     for line in output.split('\n'):
         a = re.search(expression1, line)
