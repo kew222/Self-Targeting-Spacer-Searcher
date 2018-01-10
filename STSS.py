@@ -1117,7 +1117,11 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
         if os.path.isfile(genfile_name):
             os.remove(genfile_name)
     else:     
-        record = SeqIO.read(genfile_name, 'genbank')
+        try:
+            record = SeqIO.read(genfile_name, 'genbank')
+        except ValueError:
+            os.remove(genfile_name)
+            download_genbank(contig_Acc,[])
     return record    
     
 def find_Cas_proteins(align_pos,record,protein_HMM_file,prefix,CDD=False,Cas_gene_distance=20000):
