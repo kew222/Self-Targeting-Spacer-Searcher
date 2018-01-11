@@ -21,6 +21,7 @@ import re
 import httplib
 from collections import Counter
 from CRISPR_definitions import Cas_proteins, CRISPR_types, Cas_synonym_list, Repeat_families_to_types, Expected_array_directions
+import nucleotide_acc_to_assembly_acc
 from user_email import email_address
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -1205,7 +1206,6 @@ def find_Cas_proteins(align_pos,record,protein_HMM_file,prefix,CDD=False,Cas_gen
         else:
             #Otherwise the default is search the protein sequences with HMMER to see if they are Cas proteins
             short_names = HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file)
-        
         for short_name in short_names:    
             is_Cas,protein_name,types_list = is_known_Cas_protein(short_name.split('\t')[1],types_list)
             if is_Cas:
@@ -1358,7 +1358,7 @@ def Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_
                 else:
                     record = download_genbank(genome_Acc)
                 print("Checking {0} contig for Cas proteins...".format(genome_Acc))
-                proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,protein_HMM_file,prefix,CDD,Cas_gene_distance)
+                proteins_identified,types_list,up_down = find_Cas_proteins(genome_Acc,record,protein_HMM_file,prefix,CDD,Cas_gene_distance)  #align_pos would be first, only carried in this case to annotate protein location during search
                 all_proteins_identified += proteins_identified
                 all_types_list += types_list
                 total_up_down += up_down
@@ -1409,17 +1409,20 @@ def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_H
     print("Note! Genbank files are going to be downloaded. Remove them after if unwanted.")
     re_analyzed_data = []
     for result in imported_data:
-        contig_Acc = result[1]  #locus Acc number
-        align_locus = result[10]  #alignment position of the self_targeting spacer in the CRISPR locus  
+        print('stupid advert',result)
+        contig_Acc = result[2]  #locus Acc number
+        align_locus = result[11]  #position of the self_targeting spacer in the CRISPR locus  
         print("Reanalyzing locus found in {0}...".format(contig_Acc))
         contig_filename = contig_Acc.split(".")[0] + ".gb"
         if os.path.isfile("GenBank_files/{0}.gb".format(contig_filename)):
             record = SeqIO.read(contig_filename, 'genbank')
         else:
             record = download_genbank(contig_Acc)
+        
         Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,prefix,CDD)
         
         #Convert the Cas protein search results (and Cas genes found) into a printable string       
+        print('headache',Cas_search)
         if len(Cas_search) > 1:
             locus_condition = "".join(Cas_search[:2])
             if len(Cas_search) > 2:
@@ -1436,7 +1439,7 @@ def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_H
         except UnboundLocalError:
             proteins_found = 'N/A'
         
-        repeat_direction,Type_repeat,possible_types = repeat_HMM_check(result[15],prefix,repeat_HMM_file)
+        repeat_direction,Type_repeat,possible_types = repeat_HMM_check(result[16],prefix,repeat_HMM_file)
         
         #Double check the direction of the array, and flip the spacer/repeat/PAM sequences if in reverse
         #First, determine the array direction based on the Cas gene places
@@ -1506,29 +1509,29 @@ def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_H
         #if the repeat_direction is found to be backward, do the flipping
         if repeat_direction < 0:
             #Need to flip spacer sequence, PAM sequences, consensus Repeat
-            PAM_seq_up = str(Seq(result[12]).reverse_complement())           
+            PAM_seq_up = str(Seq(result[13]).reverse_complement())           
             temp_seq = PAM_seq_up
-            PAM_seq_up = str(Seq(result[14]).reverse_complement())    
+            PAM_seq_up = str(Seq(result[15]).reverse_complement())    
             PAM_seq_down = temp_seq          
-            consensus_repeat = str(Seq(result[15]).reverse_complement())                
-            spacer_seq = str(Seq(result[11]).reverse_complement())                
+            consensus_repeat = str(Seq(result[16]).reverse_complement())                
+            spacer_seq = str(Seq(result[12]).reverse_complement())                
             array_direction = "Original orientation wrong (sequences reversed, determined with repeat sequence)"
         
             #Also need to flip the orientation of the mutation annotations (for the repeats and target sequence)
-            target_sequence = result[13]
+            target_sequence = result[14]
             if target_sequence != "Perfect match":
-                target_sequence = flip_mismatch_notation(result[13])        
-            repeat_mutations = result[16]
+                target_sequence = flip_mismatch_notation(result[14])        
+            repeat_mutations = result[17]
             if repeat_mutations not in ("None","Skipped","Error in repeat, not analyzed"):
                 #need to parse out the upper and lower mutations
-                if result[16][:4] == "Both":
-                    repeat_U = result[16].split(": ")[-2].split(", ")[0]
-                    repeat_D = result[16].split(": ")[-1].strip()
-                elif result[16][:4] == "Down":
+                if result[17][:4] == "Both":
+                    repeat_U = result[17].split(": ")[-2].split(", ")[0]
+                    repeat_D = result[17].split(": ")[-1].strip()
+                elif result[17][:4] == "Down":
                     repeat_U = ""
-                    repeat_D = result[16].split(": ")[-1].strip()
-                elif result[16][:4] == "Upst":
-                    repeat_U = result[16].split(": ")[-1].strip()
+                    repeat_D = result[17].split(": ")[-1].strip()
+                elif result[17][:4] == "Upst":
+                    repeat_U = result[17].split(": ")[-1].strip()
                     repeat_D = ""
                 if repeat_U != "":
                     repeat_U = flip_mismatch_notation(repeat_U)
@@ -1537,9 +1540,9 @@ def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_H
                 repeat_mutations = target_mutation_annotation(repeat_U, repeat_D)
             flipped_fields = [spacer_seq,PAM_seq_up,target_sequence,PAM_seq_down,consensus_repeat,repeat_mutations,array_direction]
         else:
-            flipped_fields = result[11:18]  #the original, unflipped data
+            flipped_fields = result[12:19]  #the original, unflipped data
         
-        re_analyzed_data.append(result[:3] + [Type_proteins,Type_repeat,locus_condition,proteins_found] + result[7:11] + flipped_fields + result[18:])
+        re_analyzed_data.append(result[:4] + [Type_proteins,Type_repeat,locus_condition,proteins_found] + result[8:12] + flipped_fields + result[19:])
     
     return re_analyzed_data                                                                                                                                                                                                                                                         
 
@@ -1593,8 +1596,7 @@ def repeat_HMM_check(consensus_repeat,prefix,repeat_HMM_file):
             break
                                                                       
     return repeat_direction,Type_repeat,possible_types                                                         
-                                                               
-                                                                 
+                                                                                                                               
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
 def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,contig_lengths,affected_genomes,alt_align_subtract,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,repeats=4):   
 
@@ -2294,7 +2296,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
     else:
         print("Done searching for self-targeting spacers. {0} self-targeting spacers found in total.".format(len(blast_results_filtered_summary)))
 
-    return blast_results_filtered_summary, locus_Accs
+    return blast_results_filtered_summary,locus_Accs
 
 def Export_results(in_island,not_in_island,unknown_islands,prefix,locus_Accs={},fastanames={}):
 
@@ -2313,19 +2315,19 @@ def Export_results(in_island,not_in_island,unknown_islands,prefix,locus_Accs={},
 def output_results(results,replacement_dict,fastanames,filename):
     #Export results to a separate file 
     with open(filename,"w") as bfile:
-        bfile.write("Target Accession#\tLocus Accession#\tSpecies/Strain\tPredicted Type from Cas proteins\tPredicted Type from repeats\tLocus Completeness\tCas Genes Identified\tCRISPR #\tSpacer #\tSpacer Target Pos.\tSpacer Locus Pos.\tSpacer Sequence\tPAM Region (Upstream)\tTarget Sequence\tPAM Region (Downstream)\tConsensus Repeat\tRepeat Mutations\tArray Direction\tSelf-Target(s)\tPHASTER Island #\n") 
+        bfile.write("Assembly uID\tTarget Accession#\tLocus Accession#\tSpecies/Strain\tPredicted Type from Cas proteins\tPredicted Type from repeats\tLocus Completeness\tCas Genes Identified\tCRISPR #\tSpacer #\tSpacer Target Pos.\tSpacer Locus Pos.\tSpacer Sequence\tPAM Region (Upstream)\tTarget Sequence\tPAM Region (Downstream)\tConsensus Repeat\tRepeat Mutations\tArray Direction\tSelf-Target(s)\tPHASTER Island #\n") 
         if results != []:
             for line in results:
                 if replacement_dict != {} and fastanames != {}:
                     x=''
-                    if fastanames[line[1]][2] == 'WGS':
+                    if fastanames[line[2]][2] == 'WGS':
                         replace_Acc = True
                     else:
                         replace_Acc = False
                     column = 0
                     for y in line:
-                        if column == 1 and replace_Acc:
-                            x = x + replacement_dict[line[1]+line[0]+str(line[10])] + '\t'
+                        if column == 2 and replace_Acc:
+                            x = x + replacement_dict[line[2]+line[1]+str(line[11])] + '\t'
                         else:
                             x = x + str(y) + "\t"
                         column += 1
@@ -2507,14 +2509,24 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pa
     #Check to see which of the spacers appears in the genome outside of any indentified CRIPSR loci
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
 
-    #Loook at spacers that are outside of the annotated loci and gather information about the originating locus and its target
+    #Look at spacers that are outside of the annotated loci and gather information about the originating locus and its target
     blast_results_filtered_summary, locus_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,CRT_params[0])
     
+    #Determine the Assembly uIDs and append to the 5' end
+    #first, get a list of the nucleotide accession numbers:
+    print("Looking up Assembly uIDs...")
+    Nuc_Accs = [x[0] for x in blast_results_filtered_summary]
+    Assem_uIDs = nucleotide_acc_to_assembly_acc.main(Nuc_Accs)
+    final_data = []; i= 0
+    for row in blast_results_filtered_summary:
+        final_data.append([Assem_uIDs[i]] + row)
+        i += 1
+    
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
-    output_results(blast_results_filtered_summary,locus_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
+    output_results(final_data,locus_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
     
     if not skip_PHASTER:
-        in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(blast_results_filtered_summary,current_dir)
+        in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(final_data,current_dir)
         Export_results(in_island,not_in_island,unknown_islands,prefix,locus_Accs,fastanames)
         print("PHASTER analysis complete.")
     else:
@@ -2523,7 +2535,7 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pa
 
     return protein_list     
                                 
-def PHASTER_analysis(blast_results_filtered_summary,current_dir):
+def PHASTER_analysis(final_data,current_dir):
 
     in_island = []
     not_in_island = []
@@ -2534,10 +2546,10 @@ def PHASTER_analysis(blast_results_filtered_summary,current_dir):
     print("Running PHASTER analysis...")
     if not os.path.exists("PHASTER_analysis"):
         os.mkdir("PHASTER_analysis")
-    for potential_hit in blast_results_filtered_summary:
+    for potential_hit in final_data:
         skip_entry = True
         #First determine if the analysis has been done before
-        Acc_to_search = potential_hit[0]  #If WGS, use the contig itself to search    
+        Acc_to_search = potential_hit[1]  #If WGS, use the contig itself to search    
         PHASTER_file = current_dir+"PHASTER_analysis/" + Acc_to_search.split(".")[0] + ".txt"
         if os.path.isfile(PHASTER_file):
             #If it has, just load the results
@@ -2563,7 +2575,7 @@ def PHASTER_analysis(blast_results_filtered_summary,current_dir):
                     if results != []:
                         island_start = int(results[4].split("-")[0])
                         island_end = int(results[4].split("-")[1])
-                        spacer_pos = potential_hit[9]
+                        spacer_pos = potential_hit[10]
                         temp = potential_hit
                         if island_start <= spacer_pos <= island_end:  #check to see if in an island
                             found_island = True
@@ -2675,7 +2687,7 @@ def import_data(input_file):
             word_num = 0
             converted_line = []
             for word in line.strip().split('\t'):
-                if word_num in (7,8,9,10):    #These are the positions in the data (0 indexed) that should be integers
+                if word_num in (8,9,10,11):    #These are the positions in the data (0 indexed) that should be integers
                     converted_line.append(int(word))
                 else:
                     converted_line.append(word)
