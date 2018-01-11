@@ -1409,7 +1409,6 @@ def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_H
     print("Note! Genbank files are going to be downloaded. Remove them after if unwanted.")
     re_analyzed_data = []
     for result in imported_data:
-        print('stupid advert',result)
         contig_Acc = result[2]  #locus Acc number
         align_locus = result[11]  #position of the self_targeting spacer in the CRISPR locus  
         print("Reanalyzing locus found in {0}...".format(contig_Acc))
@@ -1422,7 +1421,6 @@ def locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_H
         Type_proteins,Cas_search,proteins_identified,types_list,up_down = Locus_annotator(align_locus,record,Cas_gene_distance,contig_Acc,protein_HMM_file,prefix,CDD)
         
         #Convert the Cas protein search results (and Cas genes found) into a printable string       
-        print('headache',Cas_search)
         if len(Cas_search) > 1:
             locus_condition = "".join(Cas_search[:2])
             if len(Cas_search) > 2:
