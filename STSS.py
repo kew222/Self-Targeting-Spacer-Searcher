@@ -2658,8 +2658,6 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
                     time.sleep(1)
                     return lines,skip_entry
                 except KeyError:
-                    msg = str(r2[u'status']).strip()
-                    print("Waiting for PHASTER to analyze {0}... Status: ".format(Acc_to_print) + msg)
                     time.sleep(30)           #wait 30s before retrying 
         except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
             time.sleep(3)  #wait 3 seconds before retrying
@@ -2740,7 +2738,7 @@ def main(argv=None):
             #First recheck the proteins near the spacer
             re_analyzed_data = locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD)
             #Then check the repeat again for direction, Type, etc.
-            output_results(re_analyzed_data,{},{},"{0}{1}_re-analyzed.txt".format(prefix,spacer_rerun_file))   #Quickly re-generate the re-analyzed data.          
+            output_results(re_analyzed_data,{},{},"{0}{1}_re-analyzed.txt".format(prefix,spacer_rerun_file.split(".")[0]))   #Quickly re-generate the re-analyzed data.          
         else:
             #Identify genomes that contain self-targeting spacers     
             protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,ask)
