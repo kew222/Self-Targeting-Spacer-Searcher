@@ -61,7 +61,7 @@ Options
 --repeat-HMMs <filename>        Use the provided HMMs for the repeat prediction instead of the provided set 
 --complete-only                 Only return complete genomes from NCBI
 --rerun-loci <filename>         Rerun the locus annotater to recheck the nearby locus for Type and completeness from provided sapcer search results file                   
--E, --E-value  <N>              Upper limit of E-value to accept BLAST results as protein family (default: 1e-6)
+-E, --E-value  <N>              Upper limit of E-value to filter results were applicable (default: 1e-6)
 --percent-reject <N>            Percentage (of 100%) to use a cutoff from the average spacer length to reject validity of a proposed locus (default 25%)
                                 Lower values are more stringent
 -s, --spacers <N>               Number of spacers needed to declare a CRISPR locus (default: 3)
@@ -73,7 +73,7 @@ Options
                                 appearing as hits (default: 100)
 -d, --Cas-gene-distance <N>     Window around an array to search for Cas proteins to determine CRISPR subtype
                                 (default: 20000 - input 0 to search whole genome) 
---skip-PHASTER                  Skip PHASTER analysis (currently can't upload search files)                                
+--skip-PHASTER                  Skip PHASTER analysis                               
 -p, --rerun-PHASTER <filename>  Rerun PHASTER to recheck islands from provided Spacer search results file
 
 **Note:
