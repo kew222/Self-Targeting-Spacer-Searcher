@@ -174,6 +174,7 @@ Only reruns the PHASTER analysis and does not recheck anything else in the resul
 
 #### Other notes:
 
+- CRT is fairly greedy and will propose some arrays that aren't real. While there are number of corrections/detections built into STSS to try to eliminate as many as possible, a few still get through sometimes. We recommend doing a manually look over the output and remove any suspect sequences. 
 - The repeat HMMs used for determining type and direction of the arrays are based on the REPEATS data and groupings (Sita J. Lange, Omer S. Alkhnbashi, Dominic Rose, Sebastian Will and Rolf Backofen. CRISPRmap: an automated classification of repeat conservation in prokaryotic adaptive immune systems. Nucleic Acids Research, 2013, 41(17), 8034-8044.), with additional repeat groupings added and some of the original families' orientations corrected. There are still many repeats that will not be recognized by these HMMs due to the wide diversity of repeat sequences.
 - The main use of the --rerun-loci option is intended to provide a quick way to recheck found self-targeting spacers against udpated or alternative HMMs. 
 - Self-targeting spacers found in contigs that do not have GenBank annotations will not have proteins found in them, as STSS is currently not set up to handle finding ORFs and checking them for proteins. This is a feature we are considering adding in a future release.
