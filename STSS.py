@@ -328,6 +328,8 @@ def NCBI_search(search,database,num_limit=100000,tag="[organism]",exclude_term="
             else:
                 print("httplib.IncompleteRead error at Entrez genome search step. #{0}. Retrying...".format(attempt_num))
             attempt_num += 1
+        except:
+            attempt_num += 1
     genomes = record["IdList"]
     return genomes
 
@@ -359,6 +361,8 @@ def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
                 else:
                     print("Runtime error at Entrez step linking genomes to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1
+        except:
+            attempt_num += 1
     genome_num = 0
     for linked in record2:
         try:
@@ -494,7 +498,8 @@ def link_nucleotide_to_bioproject(nucleotide_list,bioprojects=[],num_limit=10000
                 else:
                     print("Runtime error at Entrez step linking nucleotides to bioproject database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1
-    
+        except:
+            attempt_num += 1
     nucleotide_num = 0
     for linked in record4:
         try:
@@ -534,6 +539,8 @@ def link_nucleotide_to_assembly(nucleotide_list,assemblies=[],num_limit=100000):
                 else:
                     print("Runtime error at Entrez step linking nucleotides to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1
+        except:
+            attempt_num += 1
     
     nucleotide_num = 0
     for linked in record4:
