@@ -602,7 +602,7 @@ def get_Accs(IDs):
                     Accs.append(Id.strip())          
             handle.close()
             break
-        except Error as e:
+        except BaseException as e:
             print(e)
             if attempt < 4:
                 attempt += 1
