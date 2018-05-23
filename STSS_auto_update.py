@@ -87,6 +87,10 @@ class Params:
         num_limit = 1000000
         E_value_limit = 1e-3
         repeats = 4  #zero indexed (corresponds to 3 spacers)
+        min_repeat_length = 18
+        max_repeat_length = 45
+        min_spacer_length = 18
+        max_spacer_length = 45
         pad_locus = 40
         complete_only = False
         skip_PHASTER = False
@@ -126,13 +130,15 @@ class Params:
             if option in ('-d',"--Cas-gene-distance"):
                 Cas_gene_distance = int(value) 
             if option in ("-o","--prefix"):
-                prefix = value + "_"     
-                                                                                                                                                                    
+                prefix = value + "_"
+        
+        CRT_params = [repeats, min_repeat_length, max_repeat_length, min_spacer_length, max_spacer_length]
+
         if len(args) != 1:
             print("Wrong number of arguments, received {0}, should be exactly 1: the search string.".format(len(args)))
             raise Usage(help_message)   
             
-        return args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix
+        return args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix
     
     def check(self):
         pass
@@ -156,7 +162,7 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix = params.parse_options(argv)
             params.check()
         
         search_string = args[0]
@@ -267,7 +273,7 @@ def main(argv=None):
         #Use the provided genomes pathway to run self-targeting search
         provided_dir = "{0}downloaded_genomes/".format(prefix)
         try:
-            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,repeats,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,prefix,CDD,False)
+            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,prefix,CDD,False)
             protein_list = [] #Currently not used, clear memory
         except SystemExit:
             pass #Presumedly, this is raised when the anti_CRISPR_miner function finds that further analysis in that group isn't necessary
