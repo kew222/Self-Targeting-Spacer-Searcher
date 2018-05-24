@@ -273,7 +273,7 @@ def main(argv=None):
         #Use the provided genomes pathway to run self-targeting search
         provided_dir = "{0}downloaded_genomes/".format(prefix)
         try:
-            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,HMM_dir,prefix,CDD,False)
+            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file, repeat_HMM_file,prefix,CDD,False)
             protein_list = [] #Currently not used, clear memory
         except SystemExit:
             pass #Presumedly, this is raised when the anti_CRISPR_miner function finds that further analysis in that group isn't necessary
