@@ -87,8 +87,8 @@ class Params:
         num_limit = 1000000
         E_value_limit = 1e-3
         repeats = 4  #zero indexed (corresponds to 3 spacers)
-        protein_HMM_file = "HMMs_Cas_proteins.hmm"
-        repeat_HMM_file = "REPEATS_HMMs.hmm"
+        protein_HMM_file = HMM_dir + "HMMs_Cas_proteins.hmm"
+        repeat_HMM_file = HMM_dir + "REPEATS_HMMs.hmm"
         min_repeat_length = 18
         max_repeat_length = 45
         min_spacer_length = 18
