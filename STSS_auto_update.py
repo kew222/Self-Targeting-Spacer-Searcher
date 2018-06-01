@@ -140,7 +140,7 @@ class Params:
             print("Wrong number of arguments, received {0}, should be exactly 1: the search string.".format(len(args)))
             raise Usage(help_message)   
             
-        return args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix
+        return args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix,protein_HMM_file,repeat_HMM_file
     
     def check(self):
         pass
@@ -164,7 +164,7 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,PHASTER_input_file,exclude_file,update_group_file,CDD,Cas_gene_distance,prefix,protein_HMM_file,repeat_HMM_file = params.parse_options(argv)
             params.check()
         
         search_string = args[0]
