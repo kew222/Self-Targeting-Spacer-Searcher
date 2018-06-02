@@ -1703,16 +1703,19 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                     count_limit = round(count_limit)
                 strong_homology = False
                 for base in ("A","T","G","C"):
-                    base_count = spacers_pssm[i][base]
-                    if base_count >= count_limit:
-                        if step_dir > 0:
-                            move_F_len += 1
-                        else:
-                            if move_R_len == 0:
+                    try:
+                        base_count = spacers_pssm[i][base]
+                        if base_count >= count_limit:
+                            if step_dir > 0:
+                                move_F_len += 1
+                            else:
+                                if move_R_len == 0:
+                                    move_R_len += 1
                                 move_R_len += 1
-                            move_R_len += 1
-                        strong_homology = True
-                        break
+                            strong_homology = True
+                            break
+                    except KeyError:  #this can occur if the PSSM doesn't have one of the letters in the alignment
+                        pass
                 if not strong_homology:
                     break
                       
