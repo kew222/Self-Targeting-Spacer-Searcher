@@ -49,7 +49,7 @@ Before running STSS, however, you will need to edit user_email.py (using any sta
 
 ### Workflow
 
-In order to find STSs, STSS goes through the following steps (described in more detail in: **PUBLICATION HERE**):
+In order to find STSs, STSS goes through the following steps (described in more detail in: _Systematic discovery of natural CRISPR-Cas12 inhibitors_):
 
 1. Gathers genomes (either provided or by searching NCBI)
 2. Uses the CRISPR Recogition Tool (CRT; Bland, C. et al. CRISPR Recognition Tool (CRT): a tool for automatic detection of clustered regularly interspaced palindromic repeats. BMC Bioinformatics 8, 209–8 (2007)) to identify CRISPR arrays
@@ -178,6 +178,8 @@ Only reruns the PHASTER analysis and does not recheck anything else in the resul
 - The repeat HMMs used for determining type and direction of the arrays are based on the REPEATS data and groupings (Sita J. Lange, Omer S. Alkhnbashi, Dominic Rose, Sebastian Will and Rolf Backofen. CRISPRmap: an automated classification of repeat conservation in prokaryotic adaptive immune systems. Nucleic Acids Research, 2013, 41(17), 8034-8044.), with additional repeat groupings added and some of the original families' orientations corrected. There are still many repeats that will not be recognized by these HMMs due to the wide diversity of repeat sequences.
 - The main use of the --rerun-loci option is intended to provide a quick way to recheck found self-targeting spacers against udpated or alternative HMMs. 
 - Self-targeting spacers found in contigs that do not have GenBank annotations will not have proteins found in them, as STSS is currently not set up to handle finding ORFs and checking them for proteins. This is a feature we are considering adding in a future release.
+- There is currently no way for STSS to call type II-C CRISPR systems because there are no distinguishing proteins relative to II-A and II-B (e.g. Csn2 or Cas4). Because of this, the user will need to manually determine the subtype, which will be marked as an unknown type II in the results.
+- There are also some other scripts in the repository for automatically scanning NCBI for updates as well as a few scripts for checking the STSS results for the presence of anti-CRISPR proteins (i.e. anti-CRISPR_annotate.py). These scripts are fairly self-explanatory and, for the anti-CRISPR annotator, come with a list of known Acrs that can be modified by the user. The scripts are a bit slow however.
 
 
 
