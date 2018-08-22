@@ -11,6 +11,7 @@
 #
 
 
+
 #Cas11 could include:  Csa5 (I-A), Cse2 (I-E), Csm2 (III-A) and Cmr5 (III-B) 
 #Cas5 includes: cas5a, cas5d, cas5e, cas5h, cas5p, cas5, cmx5, CasD
 #Cas7 includes: csa2, csd2, cse4, csh2, casC, csp1, cst2
@@ -62,7 +63,6 @@ CRISPR_types = {
                 
                 
 Cas_proteins =  {
-                
                 "Csa1":["Type I-A","Type I-B","Type I-C","Type I-D","Type II-B","Type V-A","Type V-B","Type V-E",],
                 "Csa4":["Type I-A"],
                 "Csa5":["Type I-A"],
@@ -297,5 +297,3 @@ Expected_array_directions = {
                                 
                             }
                             
-                                                        
-                        
