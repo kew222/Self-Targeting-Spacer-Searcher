@@ -2,4 +2,4 @@
 
 #Ex. email_address = "example@university.edu"
 
-email_address = "watters@berkeley.edu"
+email_address = "someone@somewhere.edu"

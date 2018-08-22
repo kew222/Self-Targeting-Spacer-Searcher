@@ -56,6 +56,7 @@ CRISPR_types = {
                 "Type VI-B1":[["Cas13b1","c2c6"],["Csx27"]],
                 "Type VI-B2":[["Cas13b2","c2c6"],["Csx28"]],
                 "Type VI-C":[["Cas13c","c2c7"]]
+                "Type VI-D":[["Cas13d","c2c7"]]
                 
                 }
                 
@@ -291,7 +292,8 @@ Expected_array_directions = {
                                 "Type VI-A":1,
                                 "Type VI-B1":1,  
                                 "Type VI-B2":1, 
-                                "Type VI-C":1
+                                "Type VI-C":1,
+                                "Type VI-D":1
                                 
                             }
                             
