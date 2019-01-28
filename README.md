@@ -72,7 +72,7 @@ STSS can accept a couple different formats for searching genomes for self target
 
 `python STSS.py --search "Escherichia coli"`
 
-Note that the quotes will be required for multi-word terms. Also, the search term is used to search the [organism] tag on NCBI (Genomes). That is, the example search string on NCBI would be: "Escherichia coli[organism]"
+Note that the quotes will be required for multi-word terms. Also, the search term is used to search the [organism] tag on NCBI (Genomes). That is, the example search string on NCBI would be: "Escherichia coli[organism]" Thus, specific strains cannot be searched this way, only down to the species level.
 
 Alternatively, the user could determine the genomes he/she wants to search and download them (the input is required to be fasta formatted!). In that case, STSS can be given a directory containing genomes to search in:
 
@@ -86,6 +86,10 @@ Last, STSS can also accept a list of assemblies as NCBI uIDs to find and downloa
 
 
 The results from any running method will be same. There will generally be two tab-delimited files with the same formats, one containing the STSs that were found to be in prophages and the other that were not. If the PHASTER analysis was skipped (see options below), only one file will be output. Last, before PHASTER analysis, all of the results are dumped into one file, that is updated to only include hits that are incapable of running on PHASTER after all of the PHASTER runs are completed.
+
+#### Test Case
+
+To confirm that the code is working correctly, we recommend either running --search with "Moraxella bovoculi" or --list using assemblies.txt (contains assembly uID 330201 - M. bovoculi strain 33362). There is one self-targeting spacer in that genome, and the output should match the results found in Test_Case_results.txt.
 
 #### Options
 
