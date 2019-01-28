@@ -175,7 +175,7 @@ class Params:
             if option in ("-o","--prefix"):
                 prefix = value + "_"
             if option == "--dir":
-                provided_dir = str(value) + "/"      
+                provided_dir = str(value) + "/"
             if option == "--search":
                 search = value
                 num_operations += 1
@@ -235,7 +235,7 @@ class Params:
             print("You must provide an operation to perform.\n")
             raise Usage(help_message)       
         
-        if num_operations > 1:
+        if num_operations != 1 and provided_dir == '':
             print("Multiple operations are not compatible (search, list, groups). Please select one.\n")
             raise Usage(help_message)                      
         
@@ -372,7 +372,7 @@ def prep_assemblies_list(input_list_file, num_limit, complete_only,redownload,cu
     
     found_complete, found_WGS, total, complete_IDs, WGS_IDs, wgs_master_GIs, num_genomes = link_assembly_to_nucleotide(assemblies, num_limit, complete_only, num_genomes=0, complete_IDs=[], WGS_IDs=[], wgs_master_GIs=[], simple_return=False)
     fastanames, Acc_convert_to_GI = download_genomes(total, num_limit, num_genomes, found_complete, '', redownload,'', current_dir, found_WGS, complete_IDs, WGS_IDs,wgs_master_GIs, fastanames, False, prefix)
-    
+
     return fastanames, Acc_convert_to_GI
 
 def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
@@ -417,7 +417,7 @@ def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
     
     return assemblies          
 
-def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],simple_return=True):
+def link_assembly_to_nucleotide(assemblies,num_limit=200000,complete_only=False,num_genomes=0,complete_IDs=[],WGS_IDs=[],wgs_master_GIs=[],simple_return=True):
     
     #Because the number of links can exponentially grow from the genome links, split off and do in chunks
     assembly_chunk_size = 10; activity_ticker = 0
@@ -428,7 +428,7 @@ def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,
             print("Still working, linking group {0} of {1} to nucleotide...".format(activity_ticker,len(range(0,len(assemblies),assembly_chunk_size))))
         
         attempt_num = 1
-        while True:
+        while attempt_num < 4:
             try:
                 handle3 = Entrez.elink(dbfrom='assembly', db='nuccore', id=assemblies_chunk, retmax=num_limit)
                 record3 = Entrez.read(handle3)
@@ -1654,7 +1654,7 @@ def repeat_HMM_check(consensus_repeat,prefix,repeat_HMM_file):
     return repeat_direction,Type_repeat,possible_types                                                         
                                                                                                                                
                                                                  # (contig with self-target, WGS-master -str, # of contig from top -int)
-def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,contig_lengths,affected_genomes,alt_align_subtract,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,repeats=4):   
+def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,affected_genomes,alt_align_subtract,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,repeats=4):
 
     #Determine whether the current contig (or genome) has already had it's locus checked
     global loci_checked
@@ -2250,8 +2250,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                     Ns_removed = affected_genomes[Acc_num]  #this will give a key error if the genome isn't Ns masked
                                     align_locus = correct_spacers_for_Ns(align_locus,Ns_removed,0,True)    
                                 except KeyError:  #if not an affected genome
-                                    pass  
-                                break    
+                                    pass
                         else: #(genome_type is WGS)
                             #Because the CRISPR search tool is not intelligent, need to convert position of spacer within entire file to within the contig of interest
                             #First need to determine the length of each contig (CRISPR find tool ignores newlines and first line in length
@@ -2322,10 +2321,9 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                                     locus_Accs[Acc_num+Acc_num_self_target+str(align_locus)] = contig_Accs[Acc_num][0] #will happen if only 1 contig, but marked as WGS
                                                          
                         if outside_loci:   #only keep alignments that don't match 
-                            
-                            #Determine what the'PAM' sequence is after the non-locus alignment to report                                           
-                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,contig_lengths,affected_genomes,alt_align_subtract,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,repeats)
-    
+                            #Determine what the'PAM' sequence is after the non-locus alignment to report
+                            PAM_seq_up,PAM_seq_down,species,Type_proteins,Type_repeat,locus_condition,proteins_found,self_target,consensus_repeat,repeat_mutations,spacer_seq,alt_alignment,align_locus,array_direction,target_sequence,false_positive = analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self_target_contig,alt_alignment,align_locus,direction,crispr,spacer,locus_Accs,provided_dir,genome_type,Cas_gene_distance,affected_genomes,alt_align_subtract,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,repeats)
+
                             if not false_positive:
                                 blast_results_filtered_summary.append([Acc_num_self_target,  #Accession # of sequence with position of spacer target outside of array
                                                                         Acc_num,              #Accession # of sequence with position of spacer within array 
@@ -2567,14 +2565,14 @@ def self_target_search(provided_dir,input_list_file,search,num_limit,E_value_lim
     CRISPR_results, affected_genomes = spacer_scanner(fastanames,bin_path,CRT_params,current_dir,prefix)
     
     #BLAST each spacer sequence against the genome
-    spacer_data,num_loci = get_loci(CRISPR_results,fastanames, affected_genomes)
+    spacer_data,num_loci = get_loci(CRISPR_results,fastanames,affected_genomes)
 
     #Check to see which of the spacers appears in the genome outside of any indentified CRIPSR loci
     blast_results = spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_path,E_value_limit)
-
+    
     #Look at spacers that are outside of the annotated loci and gather information about the originating locus and its target
     blast_results_filtered_summary, locus_Accs = self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided_dir,Cas_gene_distance,affected_genomes,bin_path,protein_HMM_file,repeat_HMM_file,prefix,CDD,CRT_params[0])
-    
+
     #Determine the Assembly uIDs and append to the 5' end
     #first, get a list of the nucleotide accession numbers:
     print("Looking up Assembly uIDs...")
