@@ -80,9 +80,9 @@ Alternatively, the user could determine the genomes he/she wants to search and d
 
 This method is also useful if the genomes to be searched are not on NCBI. However, some of the capabilities of STSS will be limited if there isn't an NCBI Accession number to use or it can't determine it from the fasta file. This can be somewhat overcome if there is a GenBank formatted file (.gb) provided with the same name for STSS to find.
 
-Last, STSS can also accept a list of assemblies (NCBI Accessions) to get the genomes of interest (assuming they are listed in a file named assemblies.txt):
+Last, STSS can also accept a list of assemblies as NCBI uIDs to find and download the genomes of interest (assuming they are listed in a file named assemblies.txt):
 
-`python STSS.py --Accs assemblies.txt`
+`python STSS.py --list assemblies.txt`
 
 
 The results from any running method will be same. There will generally be two tab-delimited files with the same formats, one containing the STSs that were found to be in prophages and the other that were not. If the PHASTER analysis was skipped (see options below), only one file will be output. Last, before PHASTER analysis, all of the results are dumped into one file, that is updated to only include hits that are incapable of running on PHASTER after all of the PHASTER runs are completed.
@@ -94,8 +94,9 @@ Option |  Description
 -h, --help               |       Opens help message  
 -v, --version              |     Displays version number  
 --dir <directory>            |   Use directory of genomes (fasta-formatted) instead of searching NCBI  
---search <"NCBI search term"> |  Use NCBI nucleotide database to find genomes  
---Accs <Assembly_list_file> |    Search genomes based on a given list of assemblies (incompatible with search)  
+--search <"NCBI search term"> |  Use NCBI nucleotide database to find genomes with a search string   
+-g, --groups <groups_file>   |   Provide a list of search terms in an input file to loop over
+--list <Assembly_uID_list_file> |    Search genomes based on a given list of assemblies (incompatible with search). Requires that the assemblies are provided as a list of uIDs, NOT accessions.   
 -o, --prefix <string>        |   Prefix for filenames in output (ex. prefix of 'bagel' gives: bagel_Spacers...islands.txt)  
 -f, --force-redownload      |    Forces redownloading of genomes that were already downloaded  
 
@@ -105,11 +106,11 @@ Option |  Description
 -------| ------------
 -n, --no-ask            |        Force downloading of genomes regardless of number found (default: ask) 
 
-By default, STSS will ask the user if he/she wants to continue with the download if there are large number of files returned. There is a delay while searching NCBI, so turning the option off will prevent the need to wait to confirm the download if hard drive space is not an issue. 
+By default, STSS will ask the user if he/she wants to continue with the download if there are large number of files returned. There is a delay while searching NCBI, so turning the option off will prevent the need to wait to confirm the download if hard drive space is not an issue. If the --groups option is used, this is automatically changed to --no-ask so the user doesn't have to monitor the multiple searches.
 
 Option |  Description
 -------| ------------
--l, --limit <N>         |        Limit Entrez search to the first N results found (default: 10000) 
+-l, --limit <N>         |        Limit Entrez search to the first N results found (default: 200000) 
 
 Lowering this value is unnessecary for small searches, but may need to be raised for large scale searches.  
 
@@ -176,9 +177,9 @@ Only reruns the PHASTER analysis and does not recheck anything else in the resul
 
 - CRT is fairly greedy and will propose some arrays that aren't real. While there are number of corrections/detections built into STSS to try to eliminate as many as possible, a few still get through sometimes. We recommend doing a manually look over the output and remove any suspect sequences. 
 - The repeat HMMs used for determining type and direction of the arrays are based on the REPEATS data and groupings (Sita J. Lange, Omer S. Alkhnbashi, Dominic Rose, Sebastian Will and Rolf Backofen. CRISPRmap: an automated classification of repeat conservation in prokaryotic adaptive immune systems. Nucleic Acids Research, 2013, 41(17), 8034-8044.), with additional repeat groupings added and some of the original families' orientations corrected. There are still many repeats that will not be recognized by these HMMs due to the wide diversity of repeat sequences.
-- The main use of the --rerun-loci option is intended to provide a quick way to recheck found self-targeting spacers against udpated or alternative HMMs. 
+- The main use of the --rerun-loci option is intended to provide a quick way to recheck found self-targeting spacers against updated or alternative HMMs. 
 - Self-targeting spacers found in contigs that do not have GenBank annotations will not have proteins found in them, as STSS is currently not set up to handle finding ORFs and checking them for proteins. This is a feature we are considering adding in a future release.
-- There is currently no way for STSS to call type II-C CRISPR systems because there are no distinguishing proteins relative to II-A and II-B (e.g. Csn2 or Cas4). Because of this, the user will need to manually determine the subtype, which will be marked as an unknown type II in the results.
+- There is currently no way for STSS to directly call type II-C CRISPR systems because there are no distinguishing proteins relative to II-A and II-B (e.g. Csn2 or Cas4). Because of this, the user will need to manually determine the subtype, which will be marked as an unknown type II in the results.
 - There are also some other scripts in the repository for automatically scanning NCBI for updates as well as a few scripts for checking the STSS results for the presence of anti-CRISPR proteins (i.e. anti-CRISPR_annotate.py). These scripts are fairly self-explanatory and, for the anti-CRISPR annotator, come with a list of known Acrs that can be modified by the user. The scripts are a bit slow however.
 
 
