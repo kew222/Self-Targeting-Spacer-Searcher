@@ -7,10 +7,9 @@
 #        Shmakov, et al. 2015 (Mol. Cell)
 #        Smargon, et al. 2017 (Mol. Cell)
 #        Harrington, Burstein, et al. 2017 (Nature)
-#        
 #
 
-
+#LAST HMMs UPDATE: August 2018
 
 #Cas11 could include:  Csa5 (I-A), Cse2 (I-E), Csm2 (III-A) and Cmr5 (III-B) 
 #Cas5 includes: cas5a, cas5d, cas5e, cas5h, cas5p, cas5, cmx5, CasD

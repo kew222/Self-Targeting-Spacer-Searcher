@@ -11,6 +11,7 @@
 #Dependencies include:  BLAST (local), biopython, CRT CRISPR finder tool, Clustal Omega (and thus argtable2)
 
 from __future__ import division
+from datetime import datetime
 import sys, os
 import subprocess
 import getopt
@@ -44,21 +45,24 @@ about the nature of the self-targeting spacers.
 *Make sure to quote multiword search terms*
 
 Usage:
-   STSS.py [options] [--dir <directory with fasta files> | --search <"NCBI search term"> ]
+   STSS.py [options] [--dir <directory with fasta files> | --search <"NCBI search term"> | --groups <groups_file>  | --list <Assembly_uIDs_file> ]
 
 Options
 -h, --help                      Opens help message
 -v, --version                   Displays version number
 --dir <directory>               Use directory of genomes (fasta-formatted) instead of searching NCBI
---search <"NCBI search term">   Use NCBI nucleotide database to find genomes
---Accs <Assembly_list_file>     Search genomes based on a given list of assemblies (incompatible with search)
+--search <"NCBI search term">   *Use NCBI nucleotide database to find genomes
+-g, --groups <groups_file>       *Runs through a list of search terms line by line. Makes a directory for each group provided and searches it on NCBI
+                                Requires a text file with a list of search terms
+--list <Assem_uID_list_file>    *Search genomes based on a given list of assemblies (incompatible with search, requires list of uIDs)
+
 -o, --prefix <string>           Prefix for filenames in output (ex. prefix of 'bagel' gives: bagel_Spacers...islands.txt)
 -f, --force-redownload          Forces redownloading of genomes that were already downloaded
--n, --no-ask                    Force downloading of genomes regardless of number found (default: ask)
+-n, --no-ask                    Force downloading of genomes regardless of number found (default: ask, except when using --groups)
 -l, --limit <N>                 Limit Entrez search to the first N results found (default: 10000)
 --CDD                           Use the Conserved Domain Database to identify Cas proteins (default is to use HMMs)
---Cas-HMMs <filename>           Use the provided HMMs for the Cas proteins instead of the provided set 
---repeat-HMMs <filename>        Use the provided HMMs for the repeat prediction instead of the provided set 
+--Cas-HMMs <filename>           **Use the provided HMMs for the Cas proteins instead of the provided set
+--repeat-HMMs <filename>        **Use the provided HMMs for the repeat prediction instead of the provided set
 --complete-only                 Only return complete genomes from NCBI
 --rerun-loci <filename>         Rerun the locus annotater to recheck the nearby locus for Type and completeness from provided sapcer search results file                   
 -E, --E-value  <N>              Upper limit of E-value to filter results were applicable (default: 1e-6)
@@ -76,15 +80,16 @@ Options
 --skip-PHASTER                  Skip PHASTER analysis                               
 -p, --rerun-PHASTER <filename>  Rerun PHASTER to recheck islands from provided Spacer search results file
 
-**Note:
-    When using custom HMMs, please make sure the files are in the HMMs/ directory and end in .hmm
+Notes:
+    *These operations are mutually exclusive
+    **When using custom HMMs, please make sure the files are in the HMMs/ directory and end in .hmm
     
 '''
 
 loci_checked = {}
 
 def get_version():
-    return "1.0.0"
+    return "1.1.0"
 
 class Usage(Exception):
     def __init__(self,msg):
@@ -97,14 +102,12 @@ class Params:
     
     def parse_options(self, argv):
         try:
-            opts, args = getopt.getopt(argv[1:], "hvE:l:s:fp:cnd:o:",
+            opts, args = getopt.getopt(argv[1:], "hvE:l:s:fp:cnd:o:g:",
                                        ["limit=",
                                        "dir=",
                                        "search=",
-                                       "Accs=",
                                        "help",
                                        "prefix=",
-                                       "outside-islands",
                                        "rerun-loci=",
                                        "E-value=",
                                        "spacers=",
@@ -112,10 +115,10 @@ class Params:
                                        "max-repeat-length=",
                                        "min-spacer-length=",
                                        "max-spacer-length=",
-                                       "NCBI",
                                        "Cas-HMMs=",
                                        "repeat-HMMs=",
                                        "pad-locus=",
+                                       "list=",
                                        "Cas-gene-distance=",
                                        "no-ask",
                                        "force-redownload",
@@ -124,18 +127,18 @@ class Params:
                                        "skip-PHASTER",
                                        "rerun-PHASTER=",
                                        "CDD",
+                                       "groups=",
                                        "version"])
         
         except getopt.error, msg:
             raise Usage(msg)
-        default_limit = 100000
+        default_limit = 200000
         num_limit = 0
         E_value_limit = 1e-6
         provided_dir = ''
         protein_HMM_file = "HMMs_Cas_proteins.hmm"
         repeat_HMM_file = "REPEATS_HMMs.hmm"
         search = ''
-        Accs_input = ''
         rerun_loci = False
         repeats = 4
         min_repeat_length = 18
@@ -154,7 +157,11 @@ class Params:
         CDD = False
         Cas_gene_distance = 20000
         prefix = ''
-        
+        group = False
+        input_list_file = ''
+        num_operations = 0
+
+
         for option, value in opts:
             if option in ("-v", "--version"):
                 print "STSS.py v%s" % (get_version())
@@ -170,9 +177,11 @@ class Params:
             if option == "--dir":
                 provided_dir = str(value) + "/"      
             if option == "--search":
-                search = value  
-            if option == "--Accs":
-                Accs_input = value
+                search = value
+                num_operations += 1
+            if option == "--list":
+                input_list_file = value
+                num_operations += 1
             if option == "--Cas-HMMs":
                 protein_HMM_file = value
             if option == "--repeat-HMMs":
@@ -209,22 +218,40 @@ class Params:
             if option in ("-f","--force-redownload"):
                 redownload = True   
             if option in ("-n","--no-ask"):
-                ask = False  
-        
+                ask = False
+            if option in ("-g", "--groups"):
+                num_operations += 1
+                group = True
+                input_list_file = value
+                
+            
         #package the CRT parameters together
         CRT_params = [repeats, min_repeat_length, max_repeat_length, min_spacer_length, max_spacer_length]
         
         if len(args) != 0:
             raise Usage(help_message)    
                 
-        if search == '' and provided_dir == '' and Accs_input == '' and not rerun_PHASTER and not rerun_loci:
-            print("You must provide an operation to perform.\n") 
+        if num_operations == 0:
+            print("You must provide an operation to perform.\n")
             raise Usage(help_message)       
-        elif search != '' and Accs_input != '':
-            print("Search and Accession# input are not compatible, please select one.\n") 
+        
+        if num_operations > 1:
+            print("Multiple operations are not compatible (search, list, groups). Please select one.\n")
             raise Usage(help_message)                      
-                                                                                                                             
-        return args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file
+        
+        return args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,input_list_file,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file,group
+
+
+def import_list(update_group_file):
+    with open(update_group_file, 'r') as file1:
+        groups_to_search = [x.strip() for x in file1.readlines()]
+    
+    return groups_to_search
+
+def rescue_list(groups_remaining):  #Export the remaining to search so you can continue after a break (intended or unintended)
+    with open("groups_remaining_export.log", 'w') as file2:
+        for group in groups_remaining:
+            file2.write(group + "\n")
 
 def spacer_check(sequences, percent_reject=50, code="ATGCatgcnN"):
     
@@ -330,8 +357,23 @@ def NCBI_search(search,database,num_limit=100000,tag="[organism]",exclude_term="
             attempt_num += 1
         except:
             attempt_num += 1
+            raise
+        time.sleep(2)
     genomes = record["IdList"]
     return genomes
+
+def prep_assemblies_list(input_list_file, num_limit, complete_only,redownload,current_dir,prefix):
+    #get the assemblies from the input file
+    with open(input_list_file,'r') as file1:
+        lines = file1.readlines()
+    assemblies = [x.strip() for x in lines]
+    
+    fastanames = {}
+    
+    found_complete, found_WGS, total, complete_IDs, WGS_IDs, wgs_master_GIs, num_genomes = link_assembly_to_nucleotide(assemblies, num_limit, complete_only, num_genomes=0, complete_IDs=[], WGS_IDs=[], wgs_master_GIs=[], simple_return=False)
+    fastanames, Acc_convert_to_GI = download_genomes(total, num_limit, num_genomes, found_complete, '', redownload,'', current_dir, found_WGS, complete_IDs, WGS_IDs,wgs_master_GIs, fastanames, False, prefix)
+    
+    return fastanames, Acc_convert_to_GI
 
 def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
     attempt_num = 1
@@ -363,6 +405,7 @@ def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
                 attempt_num += 1
         except:
             attempt_num += 1
+        time.sleep(2)
     genome_num = 0
     for linked in record2:
         try:
@@ -412,6 +455,7 @@ def link_assembly_to_nucleotide(assemblies,num_limit=100000,complete_only=False,
                 else:
                     print("Runtime error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1
+            time.sleep(2)
         for assembly in record3:
             num_genomes += 1
             is_WGS = False
@@ -500,6 +544,7 @@ def link_nucleotide_to_bioproject(nucleotide_list,bioprojects=[],num_limit=10000
                 attempt_num += 1
         except:
             attempt_num += 1
+        time.sleep(2)
     nucleotide_num = 0
     for linked in record4:
         try:
@@ -541,7 +586,7 @@ def link_nucleotide_to_assembly(nucleotide_list,assemblies=[],num_limit=100000):
                 attempt_num += 1
         except:
             attempt_num += 1
-    
+        time.sleep(2)
     nucleotide_num = 0
     for linked in record4:
         try:
@@ -596,6 +641,7 @@ def get_Accs(IDs):
     attempt = 1
     while attempt < 4:
         try:    
+            time.sleep(1)
             handle = Entrez.efetch(db='nuccore', rettype="acc", id=IDs)   #Get Acc#s of those found from search
             for Id in handle:
                 if Id.strip() != "":
@@ -603,9 +649,10 @@ def get_Accs(IDs):
             handle.close()
             break
         except BaseException as e:
-            print(e)
+            print e
             if attempt < 4:
                 attempt += 1
+                time.sleep(5)
             else:
                 raise
         
@@ -651,7 +698,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
                             Acc_num = Acc_num.split("|")[0]   #This will generate a master record number, or what it was labeled as
                             break
             files_in_dir[Acc_num] = [filename, "provided", genome_type]
-
+        
         #Convert all of the searched GI numbers to Accession via a dictionary
         batch_size = 5 ; Accs = []
         all_IDs = complete_IDs+wgs_master_GIs
@@ -660,7 +707,6 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
             IDs = all_IDs[start:end]
             Accs += get_Accs(IDs)
         Acc_convert_to_GI = dict(zip(Accs,complete_IDs+wgs_master_GIs))
-            
         unaccounted_files = {}
         for Acc, data in files_in_dir.iteritems():
             try:
@@ -759,6 +805,9 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
                     print("Attempt %i of 3" % attempt)
                     attempt += 1
                     time.sleep(15)
+                if err.code == 429:
+                    time.sleep(5)
+                    print("Received error from server %s" % err)
                 else:
                     raise
             attempt += 1
@@ -771,7 +820,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
                 num_downloaded += 1                               
 
     #Convert the WGS names from GIs to Accession
-    fetch_handle = Entrez.efetch(db="nuccore", id=wgs_master_GIs, rettype="acc", retmode="text")
+    fetch_handle = Entrez.efetch(db="nuccore", id=wgs_master_GIs, rettype="acc", retmode="text", retmax=num_limit)
     wgs_masters_Acc = [id.strip() for id in fetch_handle]
     fetch_handle.close()
     
@@ -803,6 +852,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
                     break
                 else:
                     print("httplib.IncompleteRead error at fasta data fetch. Attempt #{0}. Retrying...".format(attempt))
+            time.sleep(2)
         
         #retrieve the master accession number, stored from before
         if data != []:
@@ -824,7 +874,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
     WGS_IDs = []
     
     if num_downloaded > 0:                                                                                                                  
-        print("Downloaded {0} sequences to analyze for self-targeting sequences.".format(num_downloaded))
+        print("Downloaded {0} new sequences to analyze for self-targeting sequences.".format(num_downloaded))
     else:
         print("No need to download more sequences.")
 
@@ -2011,7 +2061,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 except IndexError:
                     break
                 if errors_accum >= 9 - errors_allowed:  #if 8/9 match, reject
-                    print("Spacer {0} in CRISPR array {0} in {1} appears to be a false-positive (PAM matches repeat), skipping...".format(spacer, crispr))
+                    print("Spacer {0} in CRISPR array {1} appears to be a false-positive (PAM matches repeat), skipping...".format(spacer, crispr))
                     return ["" for x in range(0,15)] + [True]   #The false here will cause the spacer to be skipped, but not record the array as a false in case other spacers in the array are ok.
                 pos += 1        
         
@@ -2486,7 +2536,7 @@ def label_self_target(target_protein,feature_num):
    
     return target_protein
 
-def self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,ask=False):
+def self_target_search(provided_dir,input_list_file,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD=False,ask=False):
 
     if not os.path.exists('{0}temp'.format(prefix)):
             os.mkdir('{0}temp'.format(prefix))  
@@ -2508,6 +2558,10 @@ def self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pa
         if provided_dir == '':
             fastanames = {}
         fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask,prefix)
+
+    #Assembly list is used to find genomes here
+    if search == '' and input_list_file != '':
+        fastanames, Acc_convert_to_GI = prep_assemblies_list(input_list_file, num_limit, complete_only,redownload,current_dir,prefix)
 
     #Search each genome for CRIPSR repeat-spacers
     CRISPR_results, affected_genomes = spacer_scanner(fastanames,bin_path,CRT_params,current_dir,prefix)
@@ -2722,7 +2776,7 @@ def main(argv=None):
     try:
         if argv is None:
             argv = sys.argv
-            args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,Accs_input,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file = params.parse_options(argv)
+            args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,input_list_file,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file,group = params.parse_options(argv)
         
         #Get filenames for HMMs
         protein_HMM_file = HMM_dir + '/' + protein_HMM_file
@@ -2739,7 +2793,7 @@ def main(argv=None):
         
         if not os.path.exists('{0}temp'.format(prefix)) and not rerun_PHASTER:
             os.mkdir('{0}temp'.format(prefix))
-    
+
         if rerun_PHASTER:    #Used to rerun the PHASTER analysis
             imported_data = import_data(spacer_rerun_file)
             in_island,not_in_island,unknown_islands,protein_list = PHASTER_analysis(imported_data,current_dir)
@@ -2749,11 +2803,37 @@ def main(argv=None):
             #First recheck the proteins near the spacer
             re_analyzed_data = locus_re_annotator(imported_data,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD)
             #Then check the repeat again for direction, Type, etc.
-            output_results(re_analyzed_data,{},{},"{0}{1}_re-analyzed.txt".format(prefix,spacer_rerun_file.split(".")[0]))   #Quickly re-generate the re-analyzed data.          
+            output_results(re_analyzed_data,{},{},"{0}{1}_re-analyzed.txt".format(prefix,spacer_rerun_file.split(".")[0]))   #Quickly re-generate the re-analyzed data.
+        elif group:
+            orig_dir = current_dir
+            groups_to_search = import_list(input_list_file)
+            for group_to_search in groups_to_search:
+                groups_remaining = groups_to_search[groups_to_search.index(group_to_search):]
+                rescue_list(groups_remaining)
+                dir_name = group_to_search.replace(" ", "_")
+                if not os.path.exists(dir_name):
+                    os.mkdir(dir_name)
+                try:
+                    os.chdir(dir_name)
+                    print("\nCurrently in {0} directory.".format(dir_name))
+                except:
+                    print("Cannot get into {0}. Exiting...".format(dir_name))
+                    sys.exit()
+                provided_dir = ''
+                print("Searching '{0}'...\n{1}\n".format(group_to_search, str(datetime.now())))
+
+                # Identify genomes that contain self-targeting spacers
+                current_dir = orig_dir + dir_name + "/"
+                try:
+                    protein_list = self_target_search(provided_dir,input_list_file,group_to_search, num_limit, E_value_limit, CRT_params, pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,False)
+                    protein_list = []  # Currently not used, clear memory
+                except SystemExit:
+                    pass  # Presumedly, this is raised when further analysis in a group isn't necessary
+                os.chdir(orig_dir)
         else:
-            #Identify genomes that contain self-targeting spacers     
-            protein_list = self_target_search(provided_dir,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,ask)
-            #protein_list is a placeholder for potential future development  
+            #Identify genomes that contain self-targeting spacers
+            protein_list = self_target_search(provided_dir,input_list_file,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,ask)
+            #protein_list is a placeholder for potential future development
                                   
     except Usage, err:
         print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
