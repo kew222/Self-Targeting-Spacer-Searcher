@@ -89,7 +89,7 @@ Notes:
 loci_checked = {}
 
 def get_version():
-    return "1.1.0"
+    return "1.1.1"
 
 class Usage(Exception):
     def __init__(self,msg):
