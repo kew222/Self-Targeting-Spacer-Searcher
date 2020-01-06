@@ -176,6 +176,7 @@ class Params:
                 prefix = value + "_"
             if option == "--dir":
                 provided_dir = str(value) + "/"
+                num_operations += 1
             if option == "--search":
                 search = value
                 num_operations += 1
