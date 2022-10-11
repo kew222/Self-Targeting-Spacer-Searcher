@@ -1,3 +1,6 @@
+#List of known anti-CRISPRs as of October 11, 2022. Note: The controversial Type VI-A Acrs are not included.
+
+
 known_Acrs = { 'WP_003722518.1': "AcrIIA1",
                'WP_003722517.1': "AcrIIA2", 
                'WP_014930691.1': "AcrIIA3", 
