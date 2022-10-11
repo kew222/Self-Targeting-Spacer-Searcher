@@ -62,9 +62,8 @@ In order to find STSs, STSS goes through the following steps (described in more 
 7. The targeted gene in the genome is determined, possibly using the CDD to find domains if not annotated
 8. Any mutations between the target and the guide RNA are determined as well as the upstream/downstream neighboring sequences
 9. Last, the targeted contig is checked for prophages with PHASTER to determine if the STS is in a prophage
-
-(Optional) 10. Use Spacer_data_compiler.py to combine all the STSS output files into one file.
-(Optional) 11. Use anti-CRISPR_annotate.py to add an additional column to the STSS output files to search for known anti-CRISPR proteins in the target contig. The help file is fairly self-explanatory.
+10. (Optional) Use Spacer_data_compiler.py to combine all the STSS output files into one file.
+11. (Optional) Use anti-CRISPR_annotate.py to add an additional column to the STSS output files to search for known anti-CRISPR proteins in the target contig. The help file is fairly self-explanatory.
 
 
 ### Usage
