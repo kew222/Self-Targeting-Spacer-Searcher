@@ -8,7 +8,7 @@ STSS was written to search prokaryotic genomes for CRISPR arrays and determine i
 
 #### Requirements:
 
-- Python 2 (Python 3 may work as well but has not been thoroughly tested)
+- Python 3 (previous versions are written for Python 2)
 - Biopython
 - requests (Python package)
 - blastn (available from NCBI)
@@ -63,6 +63,9 @@ In order to find STSs, STSS goes through the following steps (described in more 
 8. Any mutations between the target and the guide RNA are determined as well as the upstream/downstream neighboring sequences
 9. Last, the targeted contig is checked for prophages with PHASTER to determine if the STS is in a prophage
 
+(Optional) 10. Use Spacer_data_compiler.py to combine all the STSS output files into one file.
+(Optional) 11. Use anti-CRISPR_annotate.py to add an additional column to the STSS output files to search for known anti-CRISPR proteins in the target contig. The help file is fairly self-explanatory.
+
 
 ### Usage
 
@@ -78,12 +81,11 @@ Alternatively, the user could determine the genomes he/she wants to search and d
 
 `python STSS.py --dir downloaded_genomes/`
 
-This method is also useful if the genomes to be searched are not on NCBI. However, some of the capabilities of STSS will be limited if there isn't an NCBI Accession number to use or it can't determine it from the fasta file. This can be somewhat overcome if there is a GenBank formatted file (.gb) provided with the same name for STSS to find.
+This method is also useful if the genomes to be searched are not on NCBI. However, some of the capabilities of STSS will be limited if there isn't an NCBI Accession number to use or it can't determine it from the fasta file. This can be somewhat overcome if there is a GenBank formatted file (.gb) provided with the same name for STSS to find. That Genbank file is going to be searched for in a directory named 'GenBank_files/' - if it's not there further analysis will fail (this directory is automatically made using the --search option).
 
 Last, STSS can also accept a list of assemblies as NCBI uIDs to find and download the genomes of interest (assuming they are listed in a file named assemblies.txt):
 
 `python STSS.py --list assemblies.txt`
-
 
 The results from any running method will be same. There will generally be two tab-delimited files with the same formats, one containing the STSs that were found to be in prophages and the other that were not. If the PHASTER analysis was skipped (see options below), only one file will be output. Last, before PHASTER analysis, all of the results are dumped into one file, that is updated to only include hits that are incapable of running on PHASTER after all of the PHASTER runs are completed.
 

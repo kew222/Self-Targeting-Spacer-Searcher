@@ -103,11 +103,6 @@ Cas_proteins =  {
                 "GSU0054":["Type I-U"],
                 "all1473":["Type III-D"],
                 "dinG":["Type IV-A"],
-                "Cas1":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G","Type II-A","Type II-B","Type II-C","Type III-A","Type III-B","Type V-A","Type V-B","Type V-C","Type V-D","Type V-E","Type VI-A"],
-                "Cas2":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G","Type II-A","Type II-B","Type II-C","Type III-A","Type III-B","Type V-A","Type V-B","Type V-E","Type VI-A"],
-                "Cas3":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G"],                    
-                "Cas3'":["Type I-A","Type I-D"],
-                "Cas3''":["Type I-A","Type I-D"],
                 "Cas4":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-G","Type II-B","Type V-A","Type V-B"],               
                 "Cas5":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G","Type III-A","Type III-B","Type III-C","Type III-D","Type IV-A"],                              
                 "Cas5t":["Type I-G"],
@@ -150,7 +145,13 @@ Cas_proteins =  {
                 "Csx27":["Type VI-B1"],
                 "Csx28":["Type VI-B2"],
                 "Cas13c":["Type VI-C"],
-                "c2c7":["Type VI-C"],            
+                "c2c7":["Type VI-C"],
+                "Cas1":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G","Type II-A","Type II-B","Type II-C","Type III-A","Type III-B","Type V-A","Type V-B","Type V-C","Type V-D","Type V-E","Type VI-A"],
+                "Cas2":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G","Type II-A","Type II-B","Type II-C","Type III-A","Type III-B","Type V-A","Type V-B","Type V-E","Type VI-A"],
+                "Cas3":["Type I-A","Type I-B","Type I-C","Type I-U","Type I-D","Type I-E","Type I-F","Type I-G"],                    
+                "Cas3'":["Type I-A","Type I-D"],
+                "Cas3''":["Type I-A","Type I-D"],
+                            
                                                                                                                                                                                                                                                                                                           
               }               
                 

@@ -8,6 +8,8 @@
 #This script was written in 2016-2017 by Kyle Watters
 #Copyright (c) 2016 Kyle Watters. All rights reserved.
 
+#Added capability to scan Genbank files locally and converted to use Python3 in 2022 - KEW
+
 #Dependencies include:  BLAST (local), biopython, CRT CRISPR finder tool, Clustal Omega (and thus argtable2)
 
 from __future__ import division
@@ -19,7 +21,7 @@ import glob
 import requests
 import time
 import re
-import httplib
+import http.client
 from collections import Counter
 from CRISPR_definitions import Cas_proteins, CRISPR_types, Cas_synonym_list, Repeat_families_to_types, Expected_array_directions
 import nucleotide_acc_to_assembly_acc
@@ -29,7 +31,7 @@ from Bio.Seq import Seq
 from Bio import AlignIO
 from Bio.Align import AlignInfo
 from Bio import Entrez
-from urllib2 import HTTPError  # for Python 2
+from urllib.error import HTTPError 
 Entrez.email = email_address
 
 bin_path = os.path.dirname(os.path.realpath(__file__)) + "/bin/"
@@ -89,7 +91,7 @@ Notes:
 loci_checked = {}
 
 def get_version():
-    return "1.1.1"
+    return "1.2.1"
 
 class Usage(Exception):
     def __init__(self,msg):
@@ -130,14 +132,14 @@ class Params:
                                        "groups=",
                                        "version"])
         
-        except getopt.error, msg:
+        except getopt.error as msg:
             raise Usage(msg)
         default_limit = 200000
         num_limit = 0
         E_value_limit = 1e-6
         provided_dir = ''
-        protein_HMM_file = "HMMs_Cas_proteins.hmm"
-        repeat_HMM_file = "REPEATS_HMMs.hmm"
+        protein_HMM_file = HMM_dir + "HMMs_Cas_proteins.hmm"
+        repeat_HMM_file = HMM_dir + "REPEATS_HMMs.hmm"
         search = ''
         rerun_loci = False
         repeats = 4
@@ -164,7 +166,7 @@ class Params:
 
         for option, value in opts:
             if option in ("-v", "--version"):
-                print "STSS.py v%s" % (get_version())
+                print("STSS.py v{0}".format(get_version()))
                 exit(0)
             if option in ("-h", "--help"):
                 raise Usage(help_message)  
@@ -299,7 +301,7 @@ def load_provided(provided_dir,num_limit,complete_only):
     provided_complete_counter = 0
     fastanames = {}   
     #If genomes were provided, load into fastanames
-    files = glob.glob(provided_dir + "*.*")   #gets all files in the genome directory 
+    files = glob.glob(provided_dir + "*.*")   #gets all files in the genome directory )
     for it in files:
         if provided_complete_counter + provided_WGS_counter == num_limit:
             break
@@ -349,12 +351,12 @@ def NCBI_search(search,database,num_limit=100000,tag="[organism]",exclude_term="
             record = Entrez.read(handle)
             handle.close()
             break
-        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+        except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
             if attempt_num == 3:
-                print("httplib.IncompleteRead error at Entrez genome search step. Reached limit of {0} failed attempts.".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez genome search step. Reached limit of {0} failed attempts.".format(attempt_num))
                 return
             else:
-                print("httplib.IncompleteRead error at Entrez genome search step. #{0}. Retrying...".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez genome search step. #{0}. Retrying...".format(attempt_num))
             attempt_num += 1
         except:
             attempt_num += 1
@@ -384,12 +386,12 @@ def link_genome_to_assembly(genomes,num_limit,assemblies=[]):
             record2 = Entrez.read(handle2)
             handle2.close()
             break
-        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+        except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
             if attempt_num == 3:
-                print("httplib.IncompleteRead error at Entrez step linking genomes to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking genomes to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
                 return
             else:
-                print("httplib.IncompleteRead error at Entrez step linking genomes to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking genomes to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
             attempt_num += 1
         except IndexError as e: 
             print("IndexError: ", e)
@@ -436,12 +438,12 @@ def link_assembly_to_nucleotide(assemblies,num_limit=200000,complete_only=False,
                 handle3.close()
                 time.sleep(0.35)  #Delay to prevent server abuse
                 break
-            except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+            except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
                 if attempt_num == 3:
-                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
                     return
                 else:
-                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
+                    print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1  
             except HTTPError as err:
                 print("Received error from server %s" % err)
@@ -523,12 +525,12 @@ def link_nucleotide_to_bioproject(nucleotide_list,bioprojects=[],num_limit=10000
             record4 = Entrez.read(handle4)
             handle4.close()
             break
-        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+        except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
             if attempt_num == 3:
-                print("httplib.IncompleteRead error at Entrez step linking nucleotides to bioproject database. Reached limit of {0} failed attempts.".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking nucleotides to bioproject database. Reached limit of {0} failed attempts.".format(attempt_num))
                 return
             else:
-                print("httplib.IncompleteRead error at Entrez step linking nucleotides to bioproject database. Attempt #{0}. Retrying...".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking nucleotides to bioproject database. Attempt #{0}. Retrying...".format(attempt_num))
             attempt_num += 1
         except IndexError as e: 
             print("IndexError: ", e)
@@ -565,12 +567,12 @@ def link_nucleotide_to_assembly(nucleotide_list,assemblies=[],num_limit=100000):
             record4 = Entrez.read(handle4)
             handle4.close()
             break
-        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+        except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
             if attempt_num == 3:
-                print("httplib.IncompleteRead error at Entrez step linking nucleotides to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking nucleotides to assembly database. Reached limit of {0} failed attempts.".format(attempt_num))
                 return
             else:
-                print("httplib.IncompleteRead error at Entrez step linking nucleotides to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking nucleotides to assembly database. Attempt #{0}. Retrying...".format(attempt_num))
             attempt_num += 1
         except IndexError as e: 
             print("IndexError: ", e)
@@ -650,7 +652,7 @@ def get_Accs(IDs):
             handle.close()
             break
         except BaseException as e:
-            print e
+            print(e)
             if attempt < 4:
                 attempt += 1
                 time.sleep(5)
@@ -689,7 +691,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
             #Check if the file provided is a WGS or complete genome
             frag_num = 0
             genome_type = "complete"
-            with open(filename, 'rU') as openfile:
+            with open(filename, 'r') as openfile:
                 for line in openfile:
                     if line[0] == ">":
                         frag_num += 1
@@ -709,7 +711,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
             Accs += get_Accs(IDs)
         Acc_convert_to_GI = dict(zip(Accs,complete_IDs+wgs_master_GIs))
         unaccounted_files = {}
-        for Acc, data in files_in_dir.iteritems():
+        for Acc, data in files_in_dir.items():
             try:
                 GI = Acc_convert_to_GI[Acc]
                 if GI in complete_IDs or GI in wgs_master_GIs:
@@ -722,7 +724,7 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
         #Remove the found file from the list of names that were provided in the search
         num_complete_found = 0
         num_WGS_found = 0
-        for Acc, data in fastanames.iteritems():
+        for Acc, data in fastanames.items():
             GI = Acc_convert_to_GI[Acc]
             try:
                 index = complete_IDs.index(GI)
@@ -738,9 +740,9 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
                     pass
         
         if len(unaccounted_files.keys()) > 0 and len(wgs_master_GIs) > 0:  #check to see if there are remaining files and WGS files that could be associated
-            for Acc, data in unaccounted_files.iteritems():
+            for Acc, data in unaccounted_files.items():
                 if data[2] == "WGS":
-                    with open(data[0], 'rU') as fileobj:
+                    with open(data[0], 'r') as fileobj:
                         for line in fileobj:
                             if line[0] == '>':
                                 Acc_num_contig = line.split()[0].split("|")[1]
@@ -794,12 +796,12 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
                 data = fetch_handle.read().split("\n\n")
                 fetch_handle.close()
                 break
-            except httplib.IncompleteRead:
+            except http.client.IncompleteRead:
                 if attempt == 3:
-                    print("httplib.IncompleteRead error when downloading a genome. Reached limit of {0} failed attempts.".format(attempt))
+                    print("http.client.IncompleteRead error when downloading a genome. Reached limit of {0} failed attempts.".format(attempt))
                     return
                 else:
-                    print("httplib.IncompleteRead error when downloading a genome. Attempt #{0}. Retrying...".format(attempt))
+                    print("http.client.IncompleteRead error when downloading a genome. Attempt #{0}. Retrying...".format(attempt))
             except HTTPError as err:
                 if 500 <= err.code <= 599:
                     print("Received error from server %s" % err)
@@ -847,12 +849,12 @@ def download_genomes(total,num_limit,num_genomes,found_complete,search,redownloa
                     time.sleep(15)
                 else:
                     raise
-            except httplib.IncompleteRead:
+            except http.client.IncompleteRead:
                 if attempt == 3:
-                    print("httplib.IncompleteRead error at fasta data fetch. Reached limit of {0} failed attempts.".format(attempt))
+                    print("http.client.IncompleteRead error at fasta data fetch. Reached limit of {0} failed attempts.".format(attempt))
                     break
                 else:
-                    print("httplib.IncompleteRead error at fasta data fetch. Attempt #{0}. Retrying...".format(attempt))
+                    print("http.client.IncompleteRead error at fasta data fetch. Attempt #{0}. Retrying...".format(attempt))
             time.sleep(2)
         
         #retrieve the master accession number, stored from before
@@ -894,14 +896,14 @@ def spacer_scanner(fastanames,bin_path,CRT_params,current_dir,prefix):
         os.remove("{0}genomes_with_long_stretches_of_Ns.txt".format(prefix))
     except:
         pass
-    for fastaname, holder in fastanames.iteritems():
+    for fastaname, holder in fastanames.items():
         good_genome = True
         filein = holder[0]
         if not os.path.exists("{0}CRISPR_analysis".format(prefix)):
             os.mkdir("{0}CRISPR_analysis".format(prefix))
         fasta_sequences = SeqIO.parse(open(filein),'fasta')
         #Check that the genome file has data in it
-        with open(filein, 'rU') as file1:
+        with open(filein, 'r') as file1:
             lines = file1.readlines()
         if len(lines) <= 1:
             print('No genomic data in {0}. Skipping...'.format(fastaname))
@@ -951,14 +953,14 @@ def spacer_scanner(fastanames,bin_path,CRT_params,current_dir,prefix):
         if good_genome:     
             result_file = "{0}CRISPR_analysis/".format(prefix) + fastaname.split(".")[0] + ".out"
             CRISPR_cmd = "java -cp {0}/CRT1.2-CLI.jar crt -minNR {1} -minRL {2} -maxRL {3} -minSL {4} -maxSL {5} {6} {7}".format(bin_path,CRT_params[0],CRT_params[1],CRT_params[2],CRT_params[3],CRT_params[4],filein,result_file)
-            crispr_search = subprocess.Popen(CRISPR_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            crispr_search = subprocess.Popen(CRISPR_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
             output, error = crispr_search.communicate()
             if error != '':
-                print(error + " Skipping {0}...".format(fastaname))
+                print(error.decode() + " Skipping {0}...".format(fastaname))
             else: 
                 append = True
                 try: 
-                    with open(result_file, 'rU') as result_check:
+                    with open(result_file, 'r') as result_check:
                         for line in result_check:
                             if line.find("No CRISPR elements were found.") != -1:  #check to make sure at least one locus was found to continue with
                                 append = False
@@ -991,7 +993,7 @@ def get_loci(CRISPR_results,fastanames,affected_genomes={}):
     genome_counter = 0
     num_loci = []
     for genome in CRISPR_results:
-        with open(genome[0], 'rU') as curr_file:
+        with open(genome[0], 'r') as curr_file:
             lines = curr_file.readlines()
             if fastanames[genome[1]][1] == 'lookup' and fastanames[genome[1]][2] == 'complete':
                 spacer_data.append([[lines[0].split("ORGANISM:  ")[1].split(" ")[0].strip(), 'lookup', 'complete']])  #if looked up, this should be the accession number
@@ -1060,7 +1062,7 @@ def spacer_BLAST(spacer_data,fastanames,num_loci,percent_reject,current_dir,bin_
             for line in temp_lines:
                 queryfile.write(line)
         blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt 6 -evalue {3}".format(bin_path,queryfilename,subject,E_value_limit)
-        handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         output, error = handle.communicate()
         blast_results.append(output.split("\n"))
         num += 1
@@ -1137,13 +1139,13 @@ def download_genbank(contig_Acc,bad_gb_links=[]):
                             print('No data in Genbank file for contig {0} Skipping...'.format(contig_Acc))
                             skip = True
                 break
-            except httplib.IncompleteRead:
+            except http.client.IncompleteRead:
                 if attempt == 3:
-                    print("httplib.IncompleteRead error at Genbank data fetch. Reached limit of {0} failed attempts.".format(attempt))
+                    print("http.client.IncompleteRead error at Genbank data fetch. Reached limit of {0} failed attempts.".format(attempt))
                     skip = True
                     break
                 else:
-                    print("httplib.IncompleteRead error at Genbank data fetch. Attempt #{0}. Retrying...".format(attempt))
+                    print("http.client.IncompleteRead error at Genbank data fetch. Attempt #{0}. Retrying...".format(attempt))
             except HTTPError as err:
                 if err.code != 400 :
                     print("Received error from server %s" % err)
@@ -1258,8 +1260,9 @@ def find_Cas_proteins(align_pos,record,protein_HMM_file,prefix,CDD=False,Cas_gen
                     pass  #skip CDS annotations with no id or content
     
     #Now take the proteins that weren't identified and check to see if there are any Cas proteins in them
+        
     if check_list != []:
-        if CDD:
+        if CDD == True:
             #Use the protein accession number to check whether they are Cas proteins
             short_names = CDD_homology_search(check_list)   #Note: order of the Cas genes is not preserved, only checks if all are present
         else:
@@ -1332,7 +1335,7 @@ def locus_completeness_check(Type,proteins_identified):
         else:
             Cas_search = ["Undetermined"]
         #List out the proteins that were identified, but need to cross reference to prevent doubles
-        #for Cas, types in Cas_proteins.iteritems():
+        #for Cas, types in Cas_proteins.items():
         #    if Cas in proteins_identified and Cas not in Cas_search:
         #        Cas_search.append(Cas)
                                      
@@ -1612,10 +1615,10 @@ def repeat_HMM_check(consensus_repeat,prefix,repeat_HMM_file):
     with open("{0}temp/consensus_repeat.fa".format(prefix), 'w') as file1:
         file1.write(">consensus_repeat\n{0}\n".format(consensus_repeat))
     hmm_cmd = "{0}nhmmscan -E 1e-6 --noali {1} {2}temp/consensus_repeat.fa ".format(bin_path,repeat_HMM_file,prefix)
-    handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
     output, error = handle.communicate()
-    if error != "":
-        print(error)
+    if error != '':
+        print("Error in HMMscan for repeats\n", error)
         sys.exit()        
     
     #Parse the output to find the direction of the alignment (if there was one)
@@ -1730,11 +1733,11 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
                 fasta_string += '>{0}\n{1}\n'.format(i,spaceri)
                 i += 1
         clustal_cmd = "{0}clustalo -i - --force --outfmt=clustal -o {1}temp/align_temp_spacer_output.aln".format(bin_path,prefix)      
-        handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         output, error = handle.communicate(input=fasta_string)                        
         alignment = AlignIO.read("{0}temp/align_temp_spacer_output.aln".format(prefix), "clustal")
         spacers_align = AlignInfo.SummaryInfo(alignment)
-        consensus_spacer = spacers_align.dumb_consensus()                 
+        consensus_spacer = spacers_align.dumb_consensus()  
         spacers_pssm = spacers_align.pos_specific_score_matrix(consensus_spacer, chars_to_ignore = ['N'])
         #Now start at the beginning of the spacer consensus and step forward looking for overrepresented bases
         if len(spacers) > 4:
@@ -1744,9 +1747,9 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
         move_F_len = 0; move_R_len = 0; indexes = range(0,len(consensus_spacer)-1)
         for step_dir in (1, -1):
             if step_dir == -1:
-                indexes.reverse()
+                reversed(indexes)
             for i in indexes:  #will step forward then backward to look for mischaracterized repeats -1 because the last nucleotide tends to be more variable
-                total_counts = sum(spacers_pssm[i].values())
+                total_counts = len(spacers)   #edit to include gaps in the count for representation
                 count_limit = overrep_percent * total_counts
                 if round(count_limit) < count_limit:
                     count_limit = round(count_limit) + 1  #always round up
@@ -1822,7 +1825,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             if not os.path.exists('{0}temp'.format(prefix)):
                 os.mkdir('{0}temp'.format(prefix))
             clustal_cmd = "{0}clustalo -i - --force --outfmt=clustal -o {1}temp/align_temp_output.aln".format(bin_path,prefix)
-            handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            handle = subprocess.Popen(clustal_cmd.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
             output, error = handle.communicate(input=fasta_string)                        
             try:
                 alignments = AlignIO.read("{0}temp/align_temp_output.aln".format(prefix), "clustal")
@@ -1872,7 +1875,7 @@ def analyze_target_region(spacer_seq,fastanames,Acc_num_self_target,Acc_num,self
             output_format = 6   #originally coded with output format 4, but doesn't allow for as rigid control of single alignments
             #Then align the spacer sequence to the subsection
             blast_cmd = "{0}blastn -query {1} -subject {2} -outfmt {3} -max_target_seqs 1 -word_size 7 -ungapped -strand plus".format(bin_path,query_file,subject_file,output_format)
-            handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
             output, error = handle.communicate()
             #Now look up what part of the spacer aligns, and extend the alignment in both directions
             #Because CRISPR alignment will not allow for indels, assume that stuck in register of best alignment
@@ -2169,10 +2172,10 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
     
     #First, build a dictionary containing the contigs of each genome
     contig_Accs = {}
-    for key, value in fastanames.iteritems():
+    for key, value in fastanames.items():
         contig_list = []
         filetocheck = value[0]
-        with open(filetocheck, 'rU') as file1:
+        with open(filetocheck, 'r') as file1:
             lines = file1.readlines()
         for line in lines:
             if line[0] == '>':
@@ -2215,7 +2218,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                         try:
                             Acc_num_self_target = handle[1].strip().split(" ")[0]  #try to store the name this way if sequence was provided
                             #Acc_num = Acc_num_self_target
-                            for key,value in contig_Accs.iteritems():  #try a reverse dictionary lookup to find the WGS master
+                            for key,value in contig_Accs.items():  #try a reverse dictionary lookup to find the WGS master
                                 if Acc_num_self_target in value:
                                     Acc_num = key
                         except KeyError:
@@ -2258,7 +2261,7 @@ def self_target_analysis(blast_results,spacer_data,pad_locus,fastanames,provided
                             
                             contig_lengths = []
                             contigs_file = fastanames[Acc_num][0]
-                            with open(contigs_file, 'rU') as fileobj:
+                            with open(contigs_file, 'r') as fileobj:
                                 lines = fileobj.readlines()
                             summ = 0
                             contig_num = 0; self_target_contig = -1
@@ -2396,17 +2399,17 @@ def output_results(results,replacement_dict,fastanames,filename):
 def is_known_Cas_protein(product,types_list=[]):
     
     protein_name = ''; is_Cas = False
-    for key,values in Cas_proteins.iteritems():
+    for key,values in Cas_proteins.items():   #note, as additional Cas proteins are added, make sure Cas1, Cas2, etc. are at the bottom so Cas1 isn't found before Cas12
         if product.find(key) > -1:
             #Check to see if the protein type is annotated
-            protein_name = key
             parts = [x.lower() for x in product.split(" ")]
+            protein_name = key  #return the found hit 
             for part in parts:
                 if "type" in part and part != parts[-1]:   #ignore things that end in type
                     type_expected = "Type " + parts[parts.index(part) + 1].upper()  #find type and look next to it for the designation
                     #If a type pops up, but the letter is not there, add all possibilities
                     for value in values:
-                        if type_expected in value:
+                        if type_expected == value.split("-")[0]:  
                             types_list.append(value)  #Adds weight that the proper type will be identified
                     break
             types_list += values   #the correct Type will have the most entries in this list
@@ -2419,11 +2422,11 @@ def grab_feature(feature):
     try:
         feature_num = feature.qualifiers["protein_id"][0]
         target_protein = feature.qualifiers["product"][0] 
-    except KeyError, AttributeError:  #No protein_id associated, such as a pseudo-gene, or not a protein
+    except KeyError or AttributeError:  #No protein_id associated, such as a pseudo-gene, or not a protein
         try:
             feature_num = "locus tag: " + feature.qualifiers["locus_tag"][0] 
             target_protein = feature.type 
-        except KeyError, AttributeError:
+        except KeyError or AttributeError:
             feature_num = feature.type
             target_protein = str(feature.location)
         
@@ -2438,13 +2441,13 @@ def HMM_Cas_protein_search(check_list,check_aa,prefix,bin_path,protein_HMM_file)
             file1.write(">{0}\n{1}\n".format(protein,check_aa[index]))
             index += 1
     hmm_cmd = "{0}hmmscan -E 1e-6 --tblout {1}temp/HMM_results.txt {2} {1}temp/HMM_Cas_search.fa".format(bin_path,prefix,protein_HMM_file)
-    handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    handle = subprocess.Popen(hmm_cmd.split(),stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
     output, error = handle.communicate()
-    if error != "":
-        print(error)
+    if error != '':
+        print("Error in HMMScan for proteins\n", error)
         sys.exit()        
     #Parse the output to find the best alignments to Cas proteins
-    with open("{0}temp/HMM_results.txt".format(prefix),"rU") as file1:
+    with open("{0}temp/HMM_results.txt".format(prefix),"r") as file1:
         lines = file1.readlines()
     short_names = []
     for line in lines:
@@ -2490,7 +2493,7 @@ def CDD_homology_search(check_list):
         if try_count > 10:
             print("Trying to overcome issues with CDD speed/connectivity...")
         
-        for line in r.text.encode('utf-8').split("\n"):
+        for line in r.text.split("\n"):
             if line.find("cdsid") > -1:
                 cdsid = line.split("cdsid")[1].strip()  #Extract the cdsid number
             if line.find("status") > -1:
@@ -2515,7 +2518,7 @@ def CDD_homology_search(check_list):
                     time.sleep(3) #wait an additional 3 seconds before trying again
         elif statuscode == '0':
             #Parse out the data
-            for line in r.text.encode('utf-8').split("\n"):
+            for line in r.text.split("\n"):
                 data = line.split("\t")                        
                 if data[0].split(" - ")[0][:2] == "Q#":  #look for results by finding early tags
                     short_names.append(data[0]+'\t'+data[8])  #Couples the Accession number of the found protein with the short name for its CD search hit
@@ -2556,7 +2559,7 @@ def self_target_search(provided_dir,input_list_file,search,num_limit,E_value_lim
         #Download the appropriate genomes
         if provided_dir == '':
             fastanames = {}
-        fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask,prefix)
+            fastanames,Acc_convert_to_GI = download_genomes(total,num_limit,num_genomes,found_complete,search,redownload,provided_dir,current_dir,found_WGS,complete_IDs,WGS_IDs,wgs_master_GIs,fastanames,ask,prefix)
 
     #Assembly list is used to find genomes here
     if search == '' and input_list_file != '':
@@ -2576,13 +2579,19 @@ def self_target_search(provided_dir,input_list_file,search,num_limit,E_value_lim
 
     #Determine the Assembly uIDs and append to the 5' end
     #first, get a list of the nucleotide accession numbers:
-    print("Looking up Assembly uIDs...")
     Nuc_Accs = [x[0] for x in blast_results_filtered_summary]
-    Assem_uIDs = nucleotide_acc_to_assembly_acc.main(Nuc_Accs)
     final_data = []; i= 0
-    for row in blast_results_filtered_summary:
-        final_data.append([Assem_uIDs[i]] + row)
-        i += 1
+    if provided_dir == '':
+        print("Looking up Assembly uIDs...")
+        Assem_uIDs = nucleotide_acc_to_assembly_acc.main(Nuc_Accs)
+        for row in blast_results_filtered_summary:
+            final_data.append([Assem_uIDs[i]] + row)
+            i += 1
+    else:
+        print("Files were provided, looking for genbank files in 'GenBank_files/'...")
+        for row in blast_results_filtered_summary:
+            final_data.append(['undetermined'] + row)
+            i += 1
     
     #Export all of the results to a text file (to have preliminary results while waiting for PHASTER)
     output_results(final_data,locus_Accs,fastanames,"{0}Spacers_no_PHASTER_analysis.txt".format(prefix))
@@ -2615,7 +2624,7 @@ def PHASTER_analysis(final_data,current_dir):
         PHASTER_file = current_dir+"PHASTER_analysis/" + Acc_to_search.split(".")[0] + ".txt"
         if os.path.isfile(PHASTER_file):
             #If it has, just load the results
-            with open(PHASTER_file, 'rU') as input_file:
+            with open(PHASTER_file, 'r') as input_file:
                 lines = [x.strip() for x in input_file.readlines()]
             if lines != []:
                 skip_entry = False
@@ -2633,7 +2642,7 @@ def PHASTER_analysis(final_data,current_dir):
                 if record == True:
                     region += 1  #note what region the spacer was found in
                     string = line.strip()
-                    results = filter(None, string.split(" "))
+                    results = list(filter(None, string.split(" ")))
                     if results != []:
                         island_start = int(results[4].split("-")[0])
                         island_end = int(results[4].split("-")[1])
@@ -2697,7 +2706,7 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
             except ValueError as err:  #catches JSON objects that can't be decoded
                 if json_err == 3:  #Give it three chances to decode it
                     print(err)
-                    print("Skipping {0}...".format(Acc_to_print))
+                    print("JSON decode error. Skipping {0}...".format(Acc_to_print))
                     skip_entry = True
                     lines = []
                     return lines,skip_entry 
@@ -2716,7 +2725,7 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
             except KeyError:
                 try:
                     msg = str(r2[u'error']).strip()
-                    print(msg + "\nError with PHASTER looking for {0}".format(Acc_to_print))
+                    print(msg + "\nError with PHASTER looking for '{0}'".format(Acc_to_print))
                     skip_entry = True
                     lines = []
                     time.sleep(1)
@@ -2739,7 +2748,7 @@ def query_PHASTER(Acc_to_search,PHASTER_file,current_dir,post=False):
 
 def import_data(input_file):
     #read files into data structure, should be in output format from code above
-    with open(input_file, 'rU') as fileread:
+    with open(input_file, 'r') as fileread:
             lines = fileread.readlines()
     imported_data = []
     for line in lines:
@@ -2776,10 +2785,6 @@ def main(argv=None):
         if argv is None:
             argv = sys.argv
             args,num_limit,E_value_limit,provided_dir,search,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,rerun_PHASTER,spacer_rerun_file,skip_alignment,ask,input_list_file,rerun_loci,Cas_gene_distance,HMM_dir,prefix,CDD,protein_HMM_file,repeat_HMM_file,group = params.parse_options(argv)
-        
-        #Get filenames for HMMs
-        protein_HMM_file = HMM_dir + '/' + protein_HMM_file
-        repeat_HMM_file = HMM_dir + '/' + repeat_HMM_file
         
         #Run a check to make sure binaries are present
         check_dependencies()
@@ -2834,9 +2839,8 @@ def main(argv=None):
             protein_list = self_target_search(provided_dir,input_list_file,search,num_limit,E_value_limit,CRT_params,pad_locus,complete_only,skip_PHASTER,percent_reject,default_limit,redownload,current_dir,bin_path,Cas_gene_distance,protein_HMM_file,repeat_HMM_file,prefix,CDD,ask)
             #protein_list is a placeholder for potential future development
                                   
-    except Usage, err:
-        print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
-        print >> sys.stderr, ""
+    except Usage as err:
+        print(err)
         return 2
 
 if __name__ == "__main__":

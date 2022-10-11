@@ -1,10 +1,10 @@
-from anti_CRISPR_miner import link_assembly_to_nucleotide,download_genomes
+from STSS import link_assembly_to_nucleotide,download_genomes
 import os, sys
 
 orig_dir = os.getcwd()+'/'
 
 #import assemblies UIds
-with open("sorted_assemblies.txt", "rU") as file1:
+with open("sorted_assemblies.txt", "r") as file1:
     lines = file1.readlines()
 
 assemblies = [x.strip() for x in lines]

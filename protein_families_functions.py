@@ -74,7 +74,7 @@ def family_cluster(protein_list,E_value_limit=1e-3):
                 compiled_file2.write(">{0}\n{1}\n".format(name,AAseq))     
                 
         blast_cmd = "blastp -query {0} -subject {1} -outfmt 6".format(query_file,BLAST_file)
-        handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         output, error = handle.communicate()
         
         temp_list = [protein_num[0].replace(" ","_")]
@@ -210,10 +210,10 @@ def families_alignment(families,protein_hits_dict,current_dir):
             with open("Blast_s_temp.fasta","w") as holder:  
                 holder.write(">{0}\n{1}\n".format(family[1],protein_hits_dict[family[1]][0]))
             blast_cmd = "blastp -query {0} -subject {1} -outfmt 0".format("Blast_q_temp.fasta","Blast_s_temp.fasta",output_file)
-            handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            handle = subprocess.Popen(blast_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
             output, error = handle.communicate()
             with open(output_file,"w") as result:
-                result.write(output)
+                result.write(output.decode())
         fam_num += 1
     print("Family alignments complete.")
 

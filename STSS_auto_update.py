@@ -3,7 +3,7 @@
 #Wrapper for STSS.py. This code takes a list of bacterial genomes and searches through each group (in group mode) or a list of individual 
 #genomes (in update mode) using the STSS.
 
-#This script was written in 2016 by Kyle Watters
+#This script was written in 2016 by Kyle Watters, updated to Python3 in 2022
 #Copyright (c) 2016 Kyle Watters. All rights reserved.
 
 from STSS import self_target_search,NCBI_search,link_assembly_to_nucleotide,link_nucleotide_to_assembly,download_genomes,get_Accs
@@ -77,7 +77,7 @@ class Params:
                                        "CDD",
                                        "prefix="
                                        "Cas-gene-distance="])
-        except getopt.error, msg:
+        except getopt.error as msg:
             raise Usage(msg)
         
         update_group_file = ''
@@ -107,7 +107,7 @@ class Params:
         
         for option, value in opts:
             if option in ("-v", "--version"):
-                print "STSS_auto_update.py v%s" % (get_version())
+                print("STSS_auto_update.py v{0}".format(get_version()))
                 exit(0)
             if option in ("-h", "--help"):
                 raise Usage(help_message)  
@@ -173,7 +173,7 @@ def main(argv=None):
         exclude_genomes = []; excluded_assemblies = []
         if exclude_file != "":
             print("Loading genomes to exclude...")
-            with open(exclude_file, 'rU') as file1:
+            with open(exclude_file, 'r') as file1:
                 exclude_genomes = [x.strip() for x in file1.readlines()]
             
             #Find the nucleotide uIDs for the excluded genomes
@@ -282,9 +282,8 @@ def main(argv=None):
         os.chdir(orig_dir)                                                                                                       
                                                                                           
                                      
-    except Usage, err:
-        print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
-        print >> sys.stderr, ""
+    except Usage as err:
+        print(sys.argv[0].split("/")[-1] + ": " + str(err.msg))
         return 2
 
 if __name__ == "__main__":

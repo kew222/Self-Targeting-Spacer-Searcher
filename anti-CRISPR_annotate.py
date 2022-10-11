@@ -12,7 +12,7 @@ Usage: python anti-CRISPR_annote.py [-f file with multiple proteins | -s single 
 
 Options:
     -h, --help    Raise this help message
-    -f, --file    Give a file with a list of protein accession numbers (defaults to internal list)
+    -f, --file    Give a file with a list of protein accession numbers (defaults to internal list updated in 2022)
     -s, --single  Give a single name of a protein accession number to search
     -i, --STSS    
 
@@ -30,7 +30,7 @@ class Params:
     def parse_options(self, argv):
         try:
             opts, args = getopt.getopt(argv[1:], "f:hs:i:", ["file=", "help", "single=", "STSS="])
-        except getopt.error, msg:
+        except getopt.error as msg:
             raise Usage(msg)
         
         file_name = ''
@@ -62,7 +62,7 @@ def main(argv=None):
             args,file_name,protein_to_search, STSS_file = params.parse_options(argv)
             
             #Load in the STSS data
-            with open(STSS_file, 'rU') as file1:
+            with open(STSS_file, 'r') as file1:
                 STSS_data = file1.readlines()
             
             STSS_data = [x.strip()+'\t' for x in STSS_data]                              
@@ -70,7 +70,7 @@ def main(argv=None):
             
             #Run homolog_locator_lite.py to find all of the homologs
             if file_name != '':
-                with open(file_name,'rU') as file1:
+                with open(file_name,'r') as file1:
                     lines = file1.readlines()
                 proteins_to_search = [line.strip() for line in lines]
             elif protein_to_search != "":
@@ -109,9 +109,8 @@ def main(argv=None):
                     file1.write(el + '\n')
             
                 
-    except Usage, err:
-        print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
-        print >> sys.stderr, ""
+    except Usage as err:
+        print(sys.argv[0].split("/")[-1] + ": " + str(err.msg))
         return 2
 
 if __name__ == "__main__":

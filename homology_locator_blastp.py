@@ -3,17 +3,18 @@
 
 #This script was written in 2017 by Kyle Watters in the Doudna Lab at UC Berkeley, Berkeley, CA
 #Copyright (c) 2017 Kyle Watters. All rights reserved.
+#Upgraded to Python3 in 2022
 
 from __future__ import division
 #from Bio.Seq import Seq
 import getopt
 import sys
 import time
-import httplib
+import http.client
 from Bio import Entrez
 from Bio.Blast import NCBIWWW,NCBIXML
-from urllib2 import HTTPError  # for Python 2
-Entrez.email = "watters@berkeley.edu"
+from urllib.error import HTTPError  
+Entrez.email = "someone@somewhere.edu"
 
 help_message = '''
 homology_locater_lite.py [-f file with multiple proteins | -s single protein name]
@@ -36,7 +37,7 @@ class Params:
     def parse_options(self, argv):
         try:
             opts, args = getopt.getopt(argv[1:], "f:hs:", ["file=", "help", "single="])
-        except getopt.error, msg:
+        except getopt.error as msg:
             raise Usage(msg)
         
         file_name = ''
@@ -71,12 +72,12 @@ def protein_blast(protein_to_search,E_value_limit=0.0001):
             blastp2 = NCBIWWW.qblast("blastp", 'nr', protein_to_search, entrez_query='Prokaryote', expect=E_value_limit, hitlist_size=100000)#, format_type="Text")
             blast_record = NCBIXML.read(blastp2)
             break
-        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+        except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
             if attempt_num == 10:
-                print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
                 return
             else:
-                print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
             attempt_num += 1  
         except HTTPError as err:
             if 500 <= err.code <= 599:
@@ -112,12 +113,12 @@ def get_Nuc_uIDs(nr_blast_results,num_limit=1000000):
                 record = Entrez.read(handle)
                 handle.close()
                 break
-            except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 4 times
+            except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 4 times
                 if attempt_num == 10:
-                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
                     return
                 else:
-                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
+                    print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1  
             except HTTPError as err:
                 if 500 <= err.code <= 599:
@@ -166,12 +167,12 @@ def fetch_nuc_accessions(acr_nr_genomes,nr_blast_results):
                         Accs.append(Id.strip())       
                 handle2.close()  
                 break
-            except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+            except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
                 if attempt_num == 10:
-                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
                     return
                 else:
-                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
+                    print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1  
             except HTTPError as err:
                 if 500 <= err.code <= 599:
@@ -218,12 +219,12 @@ def get_assem_uIDs(acr_nr_genomes,num_limit=100000):
                 record = Entrez.read(handle)
                 handle.close()
                 break
-            except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+            except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
                 if attempt_num == 3:
-                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
+                    print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Reached limit of {0} failed attempts.".format(attempt_num))
                     return
                 else:
-                    print("httplib.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
+                    print("http.client.IncompleteRead error at Entrez step linking assembly numbers to nucleotide database. Attempt #{0}. Retrying...".format(attempt_num))
                 attempt_num += 1  
             except HTTPError as err:
                 if 500 <= err.code <= 599:
@@ -323,7 +324,7 @@ def main(argv=None):
             args,file_name,protein_to_search = params.parse_options(argv)
             
             if file_name != '':
-                with open(file_name,'rU') as file1:
+                with open(file_name,'r') as file1:
                     lines = file1.readlines()
                 proteins_to_search = [line.strip() for line in lines]
             else:
@@ -333,9 +334,8 @@ def main(argv=None):
                 print("Looking up homologs for {0}...".format(protein))
                 complete_results,convert_N_to_A,Nuc_dict = find_homologs(protein)
                 
-    except Usage, err:
-        print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
-        print >> sys.stderr, ""
+    except Usage as err:
+        print(sys.argv[0].split("/")[-1] + ": " + str(err.msg))
         return 2
 
 if __name__ == "__main__":

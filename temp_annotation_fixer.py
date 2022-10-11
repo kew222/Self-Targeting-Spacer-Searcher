@@ -1,7 +1,7 @@
 
 import glob
 import os
-from anti_CRISPR_miner import import_data, locus_re_annotator,output_results
+from STSS import import_data, locus_re_annotator,output_results
 
 
 orig_dir = os.getcwd()+'/'

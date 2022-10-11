@@ -22,7 +22,7 @@ class Params:
     def parse_options(self, argv):
         try:
             opts, args = getopt.getopt(argv[1:], "h", ["help"])
-        except getopt.error, msg:
+        except getopt.error as msg:
             raise Usage(msg)
         
         for option, value in opts:
@@ -44,7 +44,7 @@ def main(argv=None):
             
             spacer_file = args[0]
             
-            with open(spacer_file, 'rU') as file1:
+            with open(spacer_file, 'r') as file1:
                 lines = file1.readlines()
             #Change when output changes with new code!
             collapsed = []; collapsed_PAMs_targets = []
@@ -58,9 +58,8 @@ def main(argv=None):
                 for line in collapsed:
                     file1.write(line)
         
-    except Usage, err:
-        print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
-        print >> sys.stderr, ""
+    except Usage as err:
+        print(sys.argv[0].split("/")[-1] + ": " + str(err.msg))
         return 2
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ import sys, os
 from STSS import link_nucleotide_to_assembly, link_assembly_to_nucleotide, query_PHASTER, get_Accs
 from Bio import Entrez
 
-Entrez.email = "watters@berkeley.edu"
+Entrez.email = "someone@university.edu"
 
 help_message = '''
 PHASTER_scan.py takes a nucleotide accession number, looks up the contigs from the assembly and searches each contig for prophages with PHASTER
@@ -45,7 +45,7 @@ class Params:
                                        ["help",
                                        "version",
                                        "list"])
-        except getopt.error, msg:
+        except getopt.error as msg:
             raise Usage(msg)
         
         list_input = False
@@ -80,7 +80,7 @@ def output_results(all_Acc_results):
     
     #Export results to a separate file 
     with open("PHASTER_scan_results.txt","a") as file1:
-        for key,values in all_Acc_results.iteritems():
+        for key,values in all_Acc_results.items():
             file1.write("New search: {0}\n".format(key))
             file1.write("Contig\tProphage #\tRegion Length\t# Proteins\tLower Range\tUpper Range\n")
             for result in values:
@@ -126,7 +126,7 @@ def main(argv=None):
                     lines = []
                     PHASTER_file = current_dir+"PHASTER_analysis/" + Acc_to_search.split(".")[0] + ".txt"
                     try:
-                        with open(PHASTER_file,'rU') as file1:
+                        with open(PHASTER_file,'r') as file1:
                             lines = file1.readlines()
                         skip_entry = False
                     except IOError:
@@ -138,9 +138,8 @@ def main(argv=None):
         output_results(all_Acc_results)                                    
                             
                                                         
-    except Usage, err:
-        print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
-        print >> sys.stderr, ""
+    except Usage as err:
+        print(sys.argv[0].split("/")[-1] + ": " + str(err.msg))
         return 2
 
 if __name__ == "__main__":

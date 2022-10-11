@@ -4,7 +4,7 @@ from __future__ import division
 from Bio import Entrez
 from user_email import email_address
 Entrez.email = email_address
-import httplib
+import http.client
 import getopt, sys
 
 help_message = '''
@@ -26,12 +26,12 @@ class Params:
         try:
             opts, args = getopt.getopt(argv[1:], "vh",["help","version"])
         
-        except getopt.error, msg:
+        except getopt.error as msg:
             raise Usage(msg)
          
         for option, value in opts:
             if option in ("-v", "--version"):
-                print "python nucleotide_acc_to_assembly.py v%s" % (get_version())
+                print("python nucleotide_acc_to_assembly.py v{0}".format(get_version()))
                 exit(0)
             
         if len(args) != 1:
@@ -69,12 +69,12 @@ def link_to_assembly(nucleotide_list,database1='nucleotide',database2='assembly'
             record4 = Entrez.read(handle4)
             handle4.close()
             break
-        except httplib.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
+        except http.client.IncompleteRead:  #If get an incomplete read, retry the request up to 3 times
             if attempt_num == 3:
-                print("httplib.IncompleteRead error at Entrez step linking {0} to {1} database. Reached limit of {2} failed attempts.".format(database1,database2,attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking {0} to {1} database. Reached limit of {2} failed attempts.".format(database1,database2,attempt_num))
                 return
             else:
-                print("httplib.IncompleteRead error at Entrez step linking {0} to {1} database. Attempt #{2}. Retrying...".format(database1,database2,attempt_num))
+                print("http.client.IncompleteRead error at Entrez step linking {0} to {1} database. Attempt #{2}. Retrying...".format(database1,database2,attempt_num))
             attempt_num += 1
         except IndexError as e: 
             print("IndexError: ", e)
@@ -118,10 +118,10 @@ def NCBI_search(search,database,num_limit=100000,tag="",exclude_term=""):
             break
         except:  #If get an incomplete read, retry the request up to 3 times
             if attempt_num == 5:
-                print("httplib.IncompleteRead error at Entrez genome search step. Reached limit of {0} failed attempts.".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez genome search step. Reached limit of {0} failed attempts.".format(attempt_num))
                 return
             else:
-                print("httplib.IncompleteRead error at Entrez genome search step. #{0}. Retrying...".format(attempt_num))
+                print("http.client.IncompleteRead error at Entrez genome search step. #{0}. Retrying...".format(attempt_num))
             attempt_num += 1
     genomes = record["IdList"]
     return genomes
@@ -136,7 +136,7 @@ def main(argv=None):
             argv = sys.argv
             args = params.parse_options(argv)
             
-            with open(args[0], 'rU') as file1:
+            with open(args[0], 'r') as file1:
                 lines = file1.readlines()
             Nuc_Accs = [x.strip() for x in lines]
         else:
@@ -211,7 +211,7 @@ def main(argv=None):
         else:
             return Assem_uIDs
                        
-    except Usage, err:
+    except Usage as err:
         print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
         print >> sys.stderr, ""
         return 2

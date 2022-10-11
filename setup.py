@@ -10,7 +10,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='STSS',
-    version='1.0.1b',
+    version='1.2.1',
     description='Self-Targeting Spacer Searcher (STSS) identifies self-targeting spacers in CRISPR systems',
     long_description=long_description,
     url='https://github.com/kew222/Self-Targeting-Spacer-Search-tool',

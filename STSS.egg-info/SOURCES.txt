@@ -1,0 +1,10 @@
+CRISPR_definitions.py
+README.md
+STSS.py
+setup.py
+user_email.py
+STSS.egg-info/PKG-INFO
+STSS.egg-info/SOURCES.txt
+STSS.egg-info/dependency_links.txt
+STSS.egg-info/requires.txt
+STSS.egg-info/top_level.txt
